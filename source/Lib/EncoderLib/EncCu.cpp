@@ -52,6 +52,7 @@
 #include <stdio.h>
 #include <cmath>
 #include <algorithm>
+//#include <iomanip> //std::setprecision
 
 using namespace std;
 
@@ -59,8 +60,12 @@ using namespace std;
 //! \{
 
 //Braulio
-  long int totalTime_mergeAffine, totalTime_merge, totalTime_mergeGeo, totalTime_interImv, totalTime_inter; 
-// totalTime_hashInter;
+  long int totalTime_mergeAffine, 
+           totalTime_merge, 
+           totalTime_mergeGeo, 
+           totalTime_interImv, 
+           totalTime_inter; 
+//Braulio
 
 
 // ====================================================================================================================
@@ -243,7 +248,6 @@ EncCu::~EncCu() {
     std::cout << "================================================================" << std::endl;
     std::cout << "Tempo xCheckRDCostInterIMV: "         << totalTime_interImv << std::endl;
     std::cout << "Tempo xCheckRDCostInter: "            << totalTime_inter << std::endl;
-//  std::cout << "Tempo xCheckRDCostHashInter: "        << totalTime_hashInter << std::endl;
     std::cout << "Tempo xCheckRDCostAffineMerge2Nx2N: " << totalTime_mergeAffine << std::endl;
     std::cout << "Tempo xCheckRDCostMerge2Nx2N: "       << totalTime_mergeGeo << std::endl;
     std::cout << "Tempo xCheckRDCostMergeGeo2Nx2: "     << totalTime_merge << std::endl;

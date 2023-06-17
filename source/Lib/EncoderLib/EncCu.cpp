@@ -64,7 +64,13 @@ using namespace std;
            totalTime_merge, 
            totalTime_mergeGeo, 
            totalTime_interImv, 
-           totalTime_inter; 
+           totalTime_inter;
+
+  float cast_totalTime_mergeAffine,
+        cast_totalTime_merge,
+        cast_totalTime_mergeGeo,
+        cast_totalTime_interImv, 
+        cast_totalTime_inter;
 //Braulio
 
 
@@ -246,11 +252,21 @@ void EncCu::destroy()
 
 EncCu::~EncCu() {
     std::cout << "================================================================" << std::endl;
-    std::cout << "Tempo xCheckRDCostInterIMV: "         << totalTime_interImv << std::endl;
-    std::cout << "Tempo xCheckRDCostInter: "            << totalTime_inter << std::endl;
-    std::cout << "Tempo xCheckRDCostAffineMerge2Nx2N: " << totalTime_mergeAffine << std::endl;
-    std::cout << "Tempo xCheckRDCostMerge2Nx2N: "       << totalTime_mergeGeo << std::endl;
-    std::cout << "Tempo xCheckRDCostMergeGeo2Nx2: "     << totalTime_merge << std::endl;
+    /*
+      std::cout << "Tempo xCheckRDCostInterIMV: "         << totalTime_interImv << std::endl;
+      std::cout << "Tempo xCheckRDCostInter: "            << totalTime_inter << std::endl;
+      std::cout << "Tempo xCheckRDCostAffineMerge2Nx2N: " << totalTime_mergeAffine << std::endl;
+      std::cout << "Tempo xCheckRDCostMerge2Nx2N: "       << totalTime_mergeGeo << std::endlf;
+      std::cout << "Tempo xCheckRDCostMergeGeo2Nx2: "     << totalTime_merge << std::endl;
+      std::cout << "================================================================" << std::endl;
+    */
+
+    printf("Tempo xCheckRDCostInterIMV: %12.3f sec.\n", cast_totalTime_interImv);
+    printf("Tempo xCheckRDCostInter: %12.3f sec.\n", cast_totalTime_inter);
+    printf("Tempo xxCheckRDCostAffineMerge2Nx2N: %12.3f sec.\n", cast_totalTime_mergeAffine);
+    printf("Tempo xCheckRDCostMerge2Nx2N: %12.3f sec.\n", cast_totalTime_merge);
+    printf("Tempo xCheckRDCostMergeGeo2Nx2: %12.3f sec.\n", cast_totalTime_mergeGeo);
+
     std::cout << "================================================================" << std::endl;
 }
 
@@ -812,6 +828,7 @@ void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Par
           //Braulio
           endClock = clock();
           totalTime_interImv += endClock - startClock;
+          cast_totalTime_interImv = (totalTime_interImv)* 1.0 / CLOCKS_PER_SEC;
           
           tempCS->bestCS = nullptr;
           splitRdCostBest[CTU_LEVEL] = bestCS->cost;
@@ -831,6 +848,7 @@ void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Par
         //Braulio
         endClock = clock();
         totalTime_inter += endClock - startClock;
+        cast_totalTime_inter = (totalTime_inter)* 1.0 / CLOCKS_PER_SEC;
         
         tempCS->bestCS = nullptr;
         splitRdCostBest[CTU_LEVEL] = bestCS->cost;
@@ -864,6 +882,7 @@ void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Par
       //Braulio
         endClock = clock();
         totalTime_mergeAffine += endClock - startClock;
+        cast_totalTime_mergeAffine = (totalTime_mergeAffine* 1.0) / CLOCKS_PER_SEC;
       
       splitRdCostBest[CTU_LEVEL] = bestCS->cost;
       tempCS->splitRdCostBest = splitRdCostBest;
@@ -888,6 +907,7 @@ void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Par
       //Braulio
         endClock = clock();
         totalTime_merge += endClock - startClock;
+        cast_totalTime_merge = (totalTime_merge)* 1.0 / CLOCKS_PER_SEC;
       
       CodingUnit* cu = bestCS->getCU(partitioner.chType);
       if (cu)
@@ -909,6 +929,7 @@ void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Par
       //Braulio
         endClock = clock();
         totalTime_mergeGeo += endClock - startClock;
+        cast_totalTime_mergeGeo = (totalTime_mergeGeo)* 1.0 / CLOCKS_PER_SEC;
 
       splitRdCostBest[CTU_LEVEL] = bestCS->cost;
       tempCS->splitRdCostBest = splitRdCostBest;

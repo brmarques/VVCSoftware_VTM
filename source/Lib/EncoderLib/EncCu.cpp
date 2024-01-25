@@ -75,7 +75,10 @@ using namespace std;
 
 
 // ====================================================================================================================
-
+/*
+'const GeoMotionInfo EncCu::m_geoModeTest[GEO_MAX_NUM_CANDS]: Declaração e inicialização de um array constante de objetos 
+GeoMotionInfo representando diferentes modos de movimento geométrico.
+*/
 const GeoMotionInfo EncCu::m_geoModeTest[GEO_MAX_NUM_CANDS] = {
   GeoMotionInfo(0, 1), GeoMotionInfo(1, 0), GeoMotionInfo(0, 2), GeoMotionInfo(1, 2), GeoMotionInfo(2, 0),
   GeoMotionInfo(2, 1), GeoMotionInfo(0, 3), GeoMotionInfo(1, 3), GeoMotionInfo(2, 3), GeoMotionInfo(3, 0),
@@ -85,14 +88,37 @@ const GeoMotionInfo EncCu::m_geoModeTest[GEO_MAX_NUM_CANDS] = {
   GeoMotionInfo(5, 0), GeoMotionInfo(5, 1), GeoMotionInfo(5, 2), GeoMotionInfo(5, 3), GeoMotionInfo(5, 4)
 };
 
+//Construtor vazio da classe EncCu
 EncCu::EncCu() {}
 
+/*
+void EncCu::create( EncCfg* encCfg ): Função de inicialização da classe EncCu, onde são alocadas e configuradas as estruturas necessárias para a codificação de vídeo.
+
+Variáveis Locais:
+  - uiMaxWidth, uiMaxHeight: Obtêm as larguras e alturas máximas da unidade de codificação (CU) do objeto de configuração encCfg.
+  - chromaFormat: Obtém o formato de croma da configuração.
+  - numWidths, numHeights: Números de larguras e alturas disponíveis.
+  - m_pTempCS, m_pBestCS, m_pTempCS2, m_pBestCS2: Arrays de ponteiros para estruturas de codificação temporárias e melhores, para duas iterações.
+  - m_cuChromaQpOffsetIdxPlus1: Índice de compensação cromática da unidade de codificação (CU).
+  - maxDepth: Profundidade máxima para buffers e operações.
+  - m_modeCtrl: Ponteiro para o controlador de modos de codificação.
+  - m_acMergeBuffer, m_acRealMergeBuffer, m_acMergeTmpBuffer, m_geoWeightedBuffers, m_ctxBuffer, m_CurrCtx: Diversos buffers utilizados no processo de codificação.
+
+Passos:
+  - Alocação de memória para m_pTempCS, m_pBestCS, m_pTempCS2, m_pBestCS2 e inicialização de suas CodingStructures associadas.
+  - Inicialização de variáveis adicionais.
+  - Criação e inicialização do controlador de modos de codificação.
+  - Alocação de buffers para operações de fusão de movimento, MRG e buffers para operações geométricas ponderadas.
+  - Inicialização de buffers de contexto.
+*/
 void EncCu::create( EncCfg* encCfg )
 {
+  // Obtenção das configurações de codificação
   unsigned      uiMaxWidth    = encCfg->getMaxCUWidth();
   unsigned      uiMaxHeight   = encCfg->getMaxCUHeight();
   ChromaFormat  chromaFormat  = encCfg->getChromaFormatIdc();
 
+  //Inicialização de variáveis
   unsigned      numWidths     = gp_sizeIdxInfo->numWidths();
   unsigned      numHeights    = gp_sizeIdxInfo->numHeights();
   m_pTempCS = new CodingStructure**  [numWidths];
@@ -100,6 +126,7 @@ void EncCu::create( EncCfg* encCfg )
   m_pTempCS2 = new CodingStructure** [numWidths];
   m_pBestCS2 = new CodingStructure** [numWidths];
 
+  //Alocação de memória para as estruturas de codificação
   for( unsigned w = 0; w < numWidths; w++ )
   {
     m_pTempCS[w] = new CodingStructure*  [numHeights];
@@ -114,9 +141,11 @@ void EncCu::create( EncCfg* encCfg )
 
       if( gp_sizeIdxInfo->isCuSize( width ) && gp_sizeIdxInfo->isCuSize( height ) )
       {
+        //Criação de CodingStructures temporárias e melhores
         m_pTempCS[w][h] = new CodingStructure( m_unitCache.cuCache, m_unitCache.puCache, m_unitCache.tuCache );
         m_pBestCS[w][h] = new CodingStructure( m_unitCache.cuCache, m_unitCache.puCache, m_unitCache.tuCache );
 
+//Criação de CodingStructures com ou sem GDR(Gradual Decoder Refresh) ativado
 #if GDR_ENABLED
         m_pTempCS[w][h]->create(chromaFormat, Area(0, 0, width, height), false, (bool)encCfg->getPLTMode(), encCfg->getGdrEnabled());
         m_pBestCS[w][h]->create(chromaFormat, Area(0, 0, width, height), false, (bool)encCfg->getPLTMode(), encCfg->getGdrEnabled());
@@ -125,9 +154,11 @@ void EncCu::create( EncCfg* encCfg )
         m_pBestCS[w][h]->create(chromaFormat, Area(0, 0, width, height), false, (bool)encCfg->getPLTMode());
 #endif
 
+        //Criação de estruturas adicionais para segunda interação
         m_pTempCS2[w][h] = new CodingStructure( m_unitCache.cuCache, m_unitCache.puCache, m_unitCache.tuCache );
         m_pBestCS2[w][h] = new CodingStructure( m_unitCache.cuCache, m_unitCache.puCache, m_unitCache.tuCache );
 
+//Criação de CodingStructures adicionais de segunda interação com ou sem GDR ativado
 #if GDR_ENABLED
         m_pTempCS2[w][h]->create(chromaFormat, Area(0, 0, width, height), false, (bool)encCfg->getPLTMode(), encCfg->getGdrEnabled());
         m_pBestCS2[w][h]->create(chromaFormat, Area(0, 0, width, height), false, (bool)encCfg->getPLTMode(), encCfg->getGdrEnabled());
@@ -138,6 +169,7 @@ void EncCu::create( EncCfg* encCfg )
       }
       else
       {
+        //Configurações inválidas setar para nullptr
         m_pTempCS[w][h] = nullptr;
         m_pBestCS[w][h] = nullptr;
         m_pTempCS2[w][h] = nullptr;
@@ -146,43 +178,53 @@ void EncCu::create( EncCfg* encCfg )
     }
   }
 
+  //Inicialização de variáveis adicionais
   m_cuChromaQpOffsetIdxPlus1 = 0;
-
+  
   unsigned maxDepth = numWidths + numHeights;
 
+  //Criação e inicialização do controlador de modos de codificação
   m_modeCtrl = new EncModeCtrlMTnoRQT();
 
   m_modeCtrl->create( *encCfg );
 
+  //Alocação de buffers para operações de fusão de movimento
   for (unsigned ui = 0; ui < MMVD_MRG_MAX_RD_BUF_NUM; ui++)
   {
     m_acMergeBuffer[ui].create( chromaFormat, Area( 0, 0, uiMaxWidth, uiMaxHeight ) );
   }
+  // Alocação de buffers para operações de fusão de movimento e MRG (Merge)
   for (unsigned ui = 0; ui < MRG_MAX_NUM_CANDS; ui++)
   {
     m_acRealMergeBuffer[ui].create(chromaFormat, Area(0, 0, uiMaxWidth, uiMaxHeight));
     m_acMergeTmpBuffer[ui].create(chromaFormat, Area(0, 0, uiMaxWidth, uiMaxHeight));
   }
 
+  //Alocação de buffers para operações geométricas ponderadas
   for (auto &buf: m_geoWeightedBuffers)
   {
     buf.create(chromaFormat, Area(0, 0, uiMaxWidth, uiMaxHeight));
   }
 
+  //Inicialização de buffers de contexto
   m_ctxBuffer.resize(maxDepth);
   m_CurrCtx = 0;
 }
 
+//##############################
 
 void EncCu::destroy()
 {
+  // Obtenção do número de larguras e alturas disponíveis
   unsigned numWidths  = gp_sizeIdxInfo->numWidths();
   unsigned numHeights = gp_sizeIdxInfo->numHeights();
 
+  // Liberação de memória alocada para as estruturas de codificação
   for( unsigned w = 0; w < numWidths; w++ )
   {
     for( unsigned h = 0; h < numHeights; h++ )
     {
+      // Liberação de memória das CodingStructures temporárias e melhores da primeira iteração
       if (m_pBestCS[w][h])
       {
         m_pBestCS[w][h]->destroy();
@@ -195,6 +237,7 @@ void EncCu::destroy()
       delete m_pBestCS[w][h];
       delete m_pTempCS[w][h];
 
+      // Liberação de memória das CodingStructures temporárias e melhores da segunda iteração
       if (m_pBestCS2[w][h])
       {
         m_pBestCS2[w][h]->destroy();
@@ -208,18 +251,21 @@ void EncCu::destroy()
       delete m_pTempCS2[w][h];
     }
 
+    // Liberação de memória dos arrays de ponteiros para CodingStructures da primeira e segunda iteração
     delete[] m_pTempCS[w];
     delete[] m_pBestCS[w];
     delete[] m_pTempCS2[w];
     delete[] m_pBestCS2[w];
   }
 
+  // Liberação de memória dos arrays de ponteiros para CodingStructures da primeira e segunda iteração
   delete[] m_pBestCS; m_pBestCS = nullptr;
   delete[] m_pTempCS; m_pTempCS = nullptr;
   delete[] m_pBestCS2; m_pBestCS2 = nullptr;
   delete[] m_pTempCS2; m_pTempCS2 = nullptr;
 
 #if REUSE_CU_RESULTS
+  // Liberação de memória para armazenamento temporário de LCU (Large Coding Unit) se habilitado
   if (m_tmpStorageLCU)
   {
     m_tmpStorageLCU->destroy();
@@ -228,52 +274,52 @@ void EncCu::destroy()
 #endif
 
 #if REUSE_CU_RESULTS
+  // Liberação de memória do controlador de modos de codificação se habilitado
   m_modeCtrl->destroy();
 
 #endif
+
+  // Liberação de memória do controlador de modos de codificação
   delete m_modeCtrl;
   m_modeCtrl = nullptr;
 
+  // Liberação de memória dos buffers de fusão de movimento
   for (unsigned ui = 0; ui < MMVD_MRG_MAX_RD_BUF_NUM; ui++)
   {
     m_acMergeBuffer[ui].destroy();
   }
+  // Liberação de memória dos buffers de fusão de movimento e MRG (Merge)
   for (unsigned ui = 0; ui < MRG_MAX_NUM_CANDS; ui++)
   {
     m_acRealMergeBuffer[ui].destroy();
     m_acMergeTmpBuffer[ui].destroy();
   }
-
+  // Liberação de memória dos buffers para operações geométricas ponderadas
   for (auto &buf: m_geoWeightedBuffers)
   {
     buf.destroy();
   }
 }
 
+//Destrutor da classe EncCu(), utilizado para realização de operações de limpeza (entre outros)
 EncCu::~EncCu() {
-    std::cout << "================================================================" << std::endl;
-    /*
-      std::cout << "Tempo xCheckRDCostInterIMV: "         << totalTime_interImv << std::endl;
-      std::cout << "Tempo xCheckRDCostInter: "            << totalTime_inter << std::endl;
-      std::cout << "Tempo xCheckRDCostAffineMerge2Nx2N: " << totalTime_mergeAffine << std::endl;
-      std::cout << "Tempo xCheckRDCostMerge2Nx2N: "       << totalTime_mergeGeo << std::endlf;
-      std::cout << "Tempo xCheckRDCostMergeGeo2Nx2: "     << totalTime_merge << std::endl;
-      std::cout << "================================================================" << std::endl;
-    */
-
+    std::cout << "================================================================\n" << std::endl; 
     printf("Tempo xCheckRDCostInterIMV: %12.3f sec.\n", cast_totalTime_interImv);
     printf("Tempo xCheckRDCostInter: %12.3f sec.\n", cast_totalTime_inter);
     printf("Tempo xxCheckRDCostAffineMerge2Nx2N: %12.3f sec.\n", cast_totalTime_mergeAffine);
     printf("Tempo xCheckRDCostMerge2Nx2N: %12.3f sec.\n", cast_totalTime_merge);
     printf("Tempo xCheckRDCostMergeGeo2Nx2: %12.3f sec.\n", cast_totalTime_mergeGeo);
-
     std::cout << "================================================================" << std::endl;
 }
 
-/** \param    pcEncLib      pointer of encoder class
+/**
+ * Inicializa a classe EncCu com as instâncias das classes necessárias para a codificação.
+ * @param pcEncLib Pointer para a classe principal do codificador
+ * @param sps SPS (Sequence Parameter Set) utilizado para configurações de sequência
  */
 void EncCu::init( EncLib* pcEncLib, const SPS& sps )
 {
+  // Inicialização de ponteiros para diferentes componentes do codificador
   m_pcEncCfg           = pcEncLib;
   m_pcIntraSearch      = pcEncLib->getIntraSearch();
   m_pcInterSearch      = pcEncLib->getInterSearch();
@@ -285,14 +331,18 @@ void EncCu::init( EncLib* pcEncLib, const SPS& sps )
   m_pcRateCtrl         = pcEncLib->getRateCtrl();
   m_pcSliceEncoder     = pcEncLib->getSliceEncoder();
   m_deblockingFilter   = pcEncLib->getDeblockingFilter();
+  // Inicialização de membros específicos para codificação geométrica
   m_geoCostList.init(m_pcEncCfg->getMaxNumGeoCand());
   m_AFFBestSATDCost = MAX_DOUBLE;
-
+  
+  // Inicialização da classe base DecCu
   DecCu::init( m_pcTrQuant, m_pcIntraSearch, m_pcInterSearch );
 
+  // Inicialização do controlador de modos de codificação
   m_modeCtrl->init( m_pcEncCfg, m_pcRateCtrl, m_pcRdCost );
   m_modeCtrl->setBIMQPMap( m_pcEncCfg->getAdaptQPmap() );
 
+  // Configuração de ponteiros nas classes de busca intra e inter para o controlador de modos
   m_pcInterSearch->setModeCtrl( m_modeCtrl );
   m_modeCtrl->setInterSearch(m_pcInterSearch);
   m_pcIntraSearch->setModeCtrl( m_modeCtrl );
@@ -301,17 +351,30 @@ void EncCu::init( EncLib* pcEncLib, const SPS& sps )
 // ====================================================================================================================
 // Public member functions
 // ====================================================================================================================
-
+/**
+ * Realiza a compressão de uma CTU (Coding Tree Unit) na estrutura de codificação.
+ * @param cs Estrutura de codificação
+ * @param area Área da CTU na imagem
+ * @param ctuRsAddr Endereço da CTU na rasterização da imagem
+ * (Rasterização é o processo pelo qual um primitivo é convertido em uma imagem 
+ * bidimensional. Cada ponto dessa imagem contém informações como dados de cor, 
+ * profundidade e textura)
+ * @param prevQP Array de valores de QP (Quantization Parameter) da CTU anterior
+ * @param currQP Array de valores de QP (Quantization Parameter) da CTU atual
+ */
 void EncCu::compressCtu( CodingStructure& cs, const UnitArea& area, const unsigned ctuRsAddr, const int prevQP[], const int currQP[] )
 {
+  // Inicialização do controlador de modos para a codificação da CTU
   m_modeCtrl->initCTUEncoding( *cs.slice );
-  cs.treeType = TREE_D;
-
+  cs.treeType = TREE_D; //Definição do tipo de árvore como TREE_D.
+  
+  // Limpeza dos mapas de custo para paleta de cores
   cs.slice->m_mapPltCost[0].clear();
   cs.slice->m_mapPltCost[1].clear();
-  // init the partitioning manager
+  // init the partitioning manager // Inicialização do particionador para a CTU
   QTBTPartitioner partitioner;
   partitioner.initCtu(area, CH_L, *cs.slice);
+  // Reinicialização da busca IBC se habilitada
   if (m_pcEncCfg->getIBCMode())
   {
     if (area.lx() == 0 && area.ly() == 0)
@@ -322,6 +385,7 @@ void EncCu::compressCtu( CodingStructure& cs, const UnitArea& area, const unsign
     m_ctuIbcSearchRangeX = m_pcEncCfg->getIBCLocalSearchRangeX();
     m_ctuIbcSearchRangeY = m_pcEncCfg->getIBCLocalSearchRangeY();
   }
+  // Adaptação da faixa de busca IBC com base na taxa de acerto do hash
   if (m_pcEncCfg->getIBCMode() && m_pcEncCfg->getIBCHashSearch() && (m_pcEncCfg->getIBCFastMethod() & IBC_FAST_METHOD_ADAPTIVE_SEARCHRANGE))
   {
     const int hashHitRatio = m_ibcHashMap.getHashHitRatio(area.Y()); // in percent
@@ -336,30 +400,38 @@ void EncCu::compressCtu( CodingStructure& cs, const UnitArea& area, const unsign
       m_ctuIbcSearchRangeY >>= 1;
     }
   }
-  // init current context pointer
+  // init current context pointer // Inicializa o ponteiro de contexto atual
   m_CurrCtx = m_ctxBuffer.data();
-
+  
+  // Obtenção das estruturas temporárias e de melhor resultado
   CodingStructure *tempCS = m_pTempCS[gp_sizeIdxInfo->idxFrom( area.lumaSize().width )][gp_sizeIdxInfo->idxFrom( area.lumaSize().height )];
   CodingStructure *bestCS = m_pBestCS[gp_sizeIdxInfo->idxFrom( area.lumaSize().width )][gp_sizeIdxInfo->idxFrom( area.lumaSize().height )];
 
+  // Inicialização de subestruturas para a CTU
   cs.initSubStructure(*tempCS, partitioner.chType, partitioner.currArea(), false);
   cs.initSubStructure(*bestCS, partitioner.chType, partitioner.currArea(), false);
   tempCS->currQP[CH_L] = bestCS->currQP[CH_L] =
   tempCS->baseQP       = bestCS->baseQP       = currQP[CH_L];
   tempCS->prevQP[CH_L] = bestCS->prevQP[CH_L] = prevQP[CH_L];
  
+  // Compressão da CTU
   xCompressCU(tempCS, bestCS, partitioner);
+  // Limpeza dos mapas de custo para paleta de cores
   cs.slice->m_mapPltCost[0].clear();
   cs.slice->m_mapPltCost[1].clear();
+  // Se a CTU não foi dividida, copia os sinais para a estrutura superior
+  // todos os sinais já foram copiados durante a compressão se a CTU foi dividida - neste ponto apenas as estruturas são copiadas para o CS de nível superior
   // all signals were already copied during compression if the CTU was split - at this point only the structures are copied to the top level CS
   const bool copyUnsplitCTUSignals = bestCS->cus.size() == 1;
   cs.useSubStructure(*bestCS, partitioner.chType, CS::getArea(*bestCS, area, partitioner.chType), copyUnsplitCTUSignals,
                      false, false, copyUnsplitCTUSignals, true);
 
+  // Processamento da crominância se habilitada
   if (CS::isDualITree (cs) && isChromaEnabled (cs.pcv->chrFormat))
   {
     m_CABACEstimator->getCtx() = m_CurrCtx->start;
 
+    // Inicialização do particionador para a crominância
     partitioner.initCtu(area, CH_C, *cs.slice);
 
     cs.initSubStructure(*tempCS, partitioner.chType, partitioner.currArea(), false);
@@ -368,24 +440,27 @@ void EncCu::compressCtu( CodingStructure& cs, const UnitArea& area, const unsign
     tempCS->baseQP       = bestCS->baseQP       = currQP[CH_C];
     tempCS->prevQP[CH_C] = bestCS->prevQP[CH_C] = prevQP[CH_C];
 
+    // Compressão da CTU para a crominância
     xCompressCU(tempCS, bestCS, partitioner);
 
+    // Copia os sinais para a estrutura superior
     const bool copyUnsplitCTUSignals = bestCS->cus.size() == 1;
     cs.useSubStructure(*bestCS, partitioner.chType, CS::getArea(*bestCS, area, partitioner.chType),
                        copyUnsplitCTUSignals, false, false, copyUnsplitCTUSignals, true);
   }
 
+  // Atualização das métricas para controle de taxa se habilitado
   if (m_pcEncCfg->getUseRateCtrl())
   {
     (m_pcRateCtrl->getRCPic()->getLCU(ctuRsAddr)).m_actualMSE = (double)bestCS->dist / (double)m_pcRateCtrl->getRCPic()->getLCU(ctuRsAddr).m_numberOfPixel;
   }
-  // reset context states and uninit context pointer
+  // reset context states and uninit context pointer (Reset dos estados de contexto e desinicialização do ponteiro de contexto)
   m_CABACEstimator->getCtx() = m_CurrCtx->start;
   m_CurrCtx                  = 0;
 
 
-  // Ensure that a coding was found
-  // Selected mode's RD-cost must be not MAX_DOUBLE.
+  // Ensure that a coding was found (Garante que uma codificação foi encontrada)
+  // Selected mode's RD-cost must be not MAX_DOUBLE. (O custo RD do modo selecionado não deve ser MAX_DOUBLE.)
   CHECK( bestCS->cus.empty()                                   , "No possible encoding found" );
   CHECK( bestCS->cus[0]->predMode == NUMBER_OF_PREDICTION_MODES, "No possible encoding found" );
   CHECK( bestCS->cost             == MAX_DOUBLE                , "No possible encoding found" );

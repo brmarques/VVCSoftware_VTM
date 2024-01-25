@@ -58,47 +58,51 @@ using namespace std;
 //! \ingroup EncoderLib
 //! \{
 
+// Vetores de movimento para refinamento horizontal (s_acMvRefineH)
 static const Mv s_acMvRefineH[9] =
 {
-  Mv(  0,  0 ), // 0
-  Mv(  0, -1 ), // 1
-  Mv(  0,  1 ), // 2
-  Mv( -1,  0 ), // 3
-  Mv(  1,  0 ), // 4
-  Mv( -1, -1 ), // 5
-  Mv(  1, -1 ), // 6
-  Mv( -1,  1 ), // 7
-  Mv(  1,  1 )  // 8
+  Mv(  0,  0 ), // 0 - Vetor de movimento zero
+  Mv(  0, -1 ), // 1 - Movimento para cima
+  Mv(  0,  1 ), // 2 - Movimento para baixo
+  Mv( -1,  0 ), // 3 - Movimento para a esquerda
+  Mv(  1,  0 ), // 4 - Movimento para a direita
+  Mv( -1, -1 ), // 5 - Movimento diagonal superior esquerdo
+  Mv(  1, -1 ), // 6 - Movimento diagonal superior direito
+  Mv( -1,  1 ), // 7 - Movimento diagonal inferior esquerdo
+  Mv(  1,  1 )  // 8 - Movimento diagonal inferior direito
 };
 
+// Vetores de movimento para refinamento quádruplo (s_acMvRefineQ)
 static const Mv s_acMvRefineQ[9] =
 {
-  Mv(  0,  0 ), // 0
-  Mv(  0, -1 ), // 1
-  Mv(  0,  1 ), // 2
-  Mv( -1, -1 ), // 5
-  Mv(  1, -1 ), // 6
-  Mv( -1,  0 ), // 3
-  Mv(  1,  0 ), // 4
-  Mv( -1,  1 ), // 7
-  Mv(  1,  1 )  // 8
+  Mv(  0,  0 ), // 0 - Vetor de movimento zero
+  Mv(  0, -1 ), // 1 - Movimento para cima
+  Mv(  0,  1 ), // 2 - Movimento para baixo
+  Mv( -1, -1 ), // 5 - Movimento diagonal superior esquerdo
+  Mv(  1, -1 ), // 6 - Movimento diagonal superior direito
+  Mv( -1,  0 ), // 3 - Movimento para a esquerda
+  Mv(  1,  0 ), // 4 - Movimento para a direita
+  Mv( -1,  1 ), // 7 - Movimento diagonal inferior esquerdo
+  Mv(  1,  1 )  // 8 - Movimento diagonal inferior direito
 };
 
+//Construtor da classe Intersearch
 InterSearch::InterSearch()
-  : m_modeCtrl(nullptr)
-  , m_pSplitCS(nullptr)
-  , m_pFullCS(nullptr)
-  , m_pcEncCfg(nullptr)
-  , m_pcTrQuant(nullptr)
-  , m_pcReshape(nullptr)
-  , m_searchRange(0)
-  , m_bipredSearchRange(0)
-  , m_motionEstimationSearchMethod(MESEARCH_FULL)
-  , m_CABACEstimator(nullptr)
-  , m_CtxCache(nullptr)
-  , m_pTempPel(nullptr)
-  , m_isInitialized(false)
+  : m_modeCtrl(nullptr)                           // Ponteiro para o controle do modo de codificação
+  , m_pSplitCS(nullptr)                           // Ponteiro para a área de amostragem dividida (Split Coding Structure)
+  , m_pFullCS(nullptr)                            // Ponteiro para a área de amostragem completa (Full Coding Structure)
+  , m_pcEncCfg(nullptr)                           // Ponteiro para a configuração do codificador
+  , m_pcTrQuant(nullptr)                          // Ponteiro para o quantizador transformador
+  , m_pcReshape(nullptr)                          // Ponteiro para a estrutura de remodelação
+  , m_searchRange(0)                              // Variação máxima na pesquisa de movimento
+  , m_bipredSearchRange(0)                        // Variação máxima na pesquisa de movimento bipredicional
+  , m_motionEstimationSearchMethod(MESEARCH_FULL) // Método de pesquisa de movimento (MESEARCH_FULL é o valor padrão)
+  , m_CABACEstimator(nullptr)                     // Ponteiro para o estimador CABAC
+  , m_CtxCache(nullptr)                           // Ponteiro para o cache de contexto
+  , m_pTempPel(nullptr)                           // Ponteiro para pixels temporários
+  , m_isInitialized(false)                        // Flag de inicialização
 {
+  // Inicialização de arrays bidimensionais com zeros
   for (int i=0; i<MAX_NUM_REF_LIST_ADAPT_SR; i++)
   {
     memset(m_adaptSR[i], 0, MAX_IDX_ADAPT_SR * sizeof(int));
@@ -108,16 +112,20 @@ InterSearch::InterSearch()
     memset (m_auiMVPIdxCost[i], 0, (AMVP_MAX_NUM_CANDS+1) * sizeof (uint32_t) );
   }
 
+  // Configuração dos parâmetros de escala de ponderação
   setWpScalingDistParam( -1, REF_PIC_LIST_X, nullptr );
+  // Inicialização de ponteiros relacionados a movimento afim (Affine Motion Vector)
   m_affMVList = nullptr;
 #if GDR_ENABLED
   m_affMVListSolid = nullptr;
 #endif
   m_affMVListSize = 0;
   m_affMVListIdx = 0;
+  // Inicialização de ponteiros relacionados a movimento unidirecional (Unidirectional Motion Vector)
   m_uniMvList = nullptr;
   m_uniMvListSize = 0;
   m_uniMvListIdx = 0;
+  // Inicialização de variáveis relacionadas ao histórico de codificação
   m_histBestSbt    = MAX_UCHAR;
   m_histBestMtsIdx = MAX_UCHAR;
 }
@@ -125,28 +133,35 @@ InterSearch::InterSearch()
 
 void InterSearch::destroy()
 {
+  //Verifica se a classe já foi inicializada
   CHECK(!m_isInitialized, "Not initialized");
+  // Libera a memória alocada para pixels temporários
   if ( m_pTempPel )
   {
     delete [] m_pTempPel;
     m_pTempPel = nullptr;
   }
-
+  // Define ponteiros de amostragem dividida e completa como nulos
   m_pSplitCS = m_pFullCS = nullptr;
-
+  // Define ponteiro de amostragem salva como nulo
   m_pSaveCS = nullptr;
 
+  // Destrói recursos temporários relacionados à predição
   for(uint32_t i = 0; i < NUM_REF_PIC_LIST_01; i++)
   {
     m_tmpPredStorage[i].destroy();
   }
+  // Destrói estrutura temporária relacionada a LCU (Large Coding Unit)
   m_tmpStorageLCU.destroy();
+  // Destrói estrutura temporária relacionada a movimento afim (Affine Motion Vector)
   m_tmpAffiStorage.destroy();
 
+  // Libera a memória alocada para erros temporários de movimento afim
   if (m_tmpAffiError != nullptr)
   {
     delete[] m_tmpAffiError;
   }
+  // Libera a memória alocada para derivadas temporárias de movimento afim
   if (m_tmpAffiDeri[0] != nullptr)
   {
     delete[] m_tmpAffiDeri[0];
@@ -155,12 +170,14 @@ void InterSearch::destroy()
   {
     delete[] m_tmpAffiDeri[1];
   }
+  // Libera a memória alocada para a lista de movimento afim
   if (m_affMVList)
   {
     delete[] m_affMVList;
     m_affMVList = nullptr;
   }
 #if GDR_ENABLED
+  // Libera a memória alocada para a lista sólida de movimento afim
   if (m_affMVListSolid)
   {
     delete[] m_affMVListSolid;
@@ -168,29 +185,36 @@ void InterSearch::destroy()
   }
 #endif
 
+  // Reseta índice e tamanho da lista de movimento afim
   m_affMVListIdx = 0;
   m_affMVListSize = 0;
+  // Libera a memória alocada para a lista de movimento unidirecional
   if (m_uniMvList)
   {
     delete[] m_uniMvList;
     m_uniMvList = nullptr;
   }
+  // Reseta índice e tamanho da lista de movimento unidirecional
   m_uniMvListIdx = 0;
   m_uniMvListSize = 0;
+  // Atualiza a flag de inicialização para indicar que a classe não está mais inicializada
   m_isInitialized = false;
 }
 
-void InterSearch::setTempBuffers( CodingStructure ****pSplitCS, CodingStructure ****pFullCS, CodingStructure **pSaveCS )
+void InterSearch::setTempBuffers(CodingStructure**** pSplitCS, CodingStructure**** pFullCS, CodingStructure** pSaveCS)
 {
-  m_pSplitCS = pSplitCS;
-  m_pFullCS  = pFullCS;
-  m_pSaveCS  = pSaveCS;
+  // Define os ponteiros para estruturas de codificação temporárias
+  m_pSplitCS = pSplitCS; // Ponteiro para a área de amostragem dividida (Split Coding Structure)
+  m_pFullCS  = pFullCS;  // Ponteiro para a área de amostragem completa (Full Coding Structure)
+  m_pSaveCS  = pSaveCS;  // Ponteiro para a área de amostragem salva (Save Coding Structure)
 }
 
 InterSearch::~InterSearch()
 {
+  // Verifica se a classe está inicializada
   if (m_isInitialized)
   {
+    // Chama a função destroy() para liberar recursos
     destroy();
   }
 }
@@ -200,8 +224,11 @@ void InterSearch::init(EncCfg *pcEncCfg, TrQuant *pcTrQuant, int searchRange, in
                        const uint32_t maxCUHeight, const uint32_t maxTotalCUDepth, RdCost *pcRdCost,
                        CABACWriter *CABACEstimator, CtxCache *ctxCache, EncReshape *pcReshape)
 {
+  // Verifica se a classe já foi inicializada
   CHECK(m_isInitialized, "Already initialized");
+  //Limpa o cache de BVs (Binary Values)
   m_defaultCachedBvs.clear();
+  //Define os ponteiros e parâmetros da classe
   m_pcEncCfg                     = pcEncCfg;
   m_pcTrQuant                    = pcTrQuant;
   m_searchRange                  = searchRange;
@@ -212,6 +239,7 @@ void InterSearch::init(EncCfg *pcEncCfg, TrQuant *pcTrQuant, int searchRange, in
   m_useCompositeRef              = useCompositeRef;
   m_pcReshape                    = pcReshape;
 
+  //Inicializa a matriz de adaptação de tamanho de busca
   for (uint32_t dir = 0; dir < MAX_NUM_REF_LIST_ADAPT_SR; dir++)
   {
     for (uint32_t refIdx = 0; refIdx < MAX_IDX_ADAPT_SR; refIdx++)
@@ -220,7 +248,7 @@ void InterSearch::init(EncCfg *pcEncCfg, TrQuant *pcTrQuant, int searchRange, in
     }
   }
 
-  // initialize motion cost
+  // initialize motion cost - Inicializa o custo de índice de predição MVP
   for (int num = 0; num < AMVP_MAX_NUM_CANDS + 1; num++)
   {
     for (int idx = 0; idx < AMVP_MAX_NUM_CANDS; idx++)
@@ -236,19 +264,24 @@ void InterSearch::init(EncCfg *pcEncCfg, TrQuant *pcTrQuant, int searchRange, in
     }
   }
 
+  //Inicializa a classe InterPrediction
   const ChromaFormat cform = pcEncCfg->getChromaFormatIdc();
   InterPrediction::init( pcRdCost, cform, maxCUHeight );
 
+  //Cria estruturas temporárias para predição
   for( uint32_t i = 0; i < NUM_REF_PIC_LIST_01; i++ )
   {
     m_tmpPredStorage[i].create( UnitArea( cform, Area( 0, 0, MAX_CU_SIZE, MAX_CU_SIZE ) ) );
   }
   m_tmpStorageLCU.create( UnitArea( cform, Area( 0, 0, MAX_CU_SIZE, MAX_CU_SIZE ) ) );
   m_tmpAffiStorage.create( UnitArea( cform, Area( 0, 0, MAX_CU_SIZE, MAX_CU_SIZE ) ) );
+  //Aloca memória para erros e derivadas de movimento afim
   m_tmpAffiError = new Pel[MAX_CU_SIZE * MAX_CU_SIZE];
   m_tmpAffiDeri[0] = new int[MAX_CU_SIZE * MAX_CU_SIZE];
   m_tmpAffiDeri[1] = new int[MAX_CU_SIZE * MAX_CU_SIZE];
+  //Aloca memória para pixels temporários
   m_pTempPel = new Pel[maxCUWidth*maxCUHeight];
+  //Configura tamanhos e índices das listas de movimento afim e unidirecional
   m_affMVListMaxSize = pcEncCfg->getIsLowDelay() ? AFFINE_ME_LIST_SIZE_LD : AFFINE_ME_LIST_SIZE;
   if (!m_affMVList)
   {
@@ -269,11 +302,17 @@ void InterSearch::init(EncCfg *pcEncCfg, TrQuant *pcTrQuant, int searchRange, in
   }
   m_uniMvListIdx = 0;
   m_uniMvListSize = 0;
+  //Define que a classe está inicializada
   m_isInitialized = true;
 }
 
+/*
+  Função 'resetSavedAffineMotion' é responsável por redefinir os valores salvos de informações sobre 
+  movimento affine na classe InterSearch.
+*/
 void InterSearch::resetSavedAffineMotion()
 {
+  // Zera os vetores de movimento salvos para affine de 4 e 6 parâmetros
   for ( int i = 0; i < 2; i++ )
   {
     for ( int j = 0; j < 2; j++ )
@@ -281,34 +320,42 @@ void InterSearch::resetSavedAffineMotion()
       m_affineMotion.acMvAffine4Para[i][j] = Mv( 0, 0 );
       m_affineMotion.acMvAffine6Para[i][j] = Mv( 0, 0 );
 #if GDR_ENABLED
+      // Define que os vetores de movimento sólidos são válidos
       m_affineMotion.acMvAffine4ParaSolid[i][j] = true;
       m_affineMotion.acMvAffine6ParaSolid[i][j] = true;
 #endif
     }
     m_affineMotion.acMvAffine6Para[i][2] = Mv( 0, 0 );
 #if GDR_ENABLED
+    // Define que os vetores de movimento sólidos são válidos
     m_affineMotion.acMvAffine6ParaSolid[i][2] = true;
 #endif
-
+    // Define os índices de referência como inválidos
     m_affineMotion.affine4ParaRefIdx[i] = -1;
     m_affineMotion.affine6ParaRefIdx[i] = -1;
   }
+  // Define os custos de affine como valores máximos
   for ( int i = 0; i < 3; i++ )
   {
     m_affineMotion.hevcCost[i] = std::numeric_limits<Distortion>::max();
   }
+  // Define que os parâmetros de affine não estão disponíveis
   m_affineMotion.affine4ParaAvail = false;
   m_affineMotion.affine6ParaAvail = false;
 }
 
 #if GDR_ENABLED
+// Função para armazenar informações sobre movimento afim (GDR_ENABLED habilitado)
 void InterSearch::storeAffineMotion(Mv acAffineMv[2][3], bool acAffineMvSolid[2][3], int16_t affineRefIdx[2], EAffineModel affineType, int bcwIdx)
 #else
+// Função para armazenar informações sobre movimento afim (GDR_ENABLED desabilitado)
 void InterSearch::storeAffineMotion( Mv acAffineMv[2][3], int16_t affineRefIdx[2], EAffineModel affineType, int bcwIdx )
 #endif
 {
+  // Se o tipo de affine é 6 parâmetros e não está disponível ou o índice BCW é padrão
   if ( ( bcwIdx == BCW_DEFAULT || !m_affineMotion.affine6ParaAvail ) && affineType == AFFINEMODEL_6PARAM )
   {
+    // Armazena os vetores de movimento afim de 6 parâmetros
     for ( int i = 0; i < 2; i++ )
     {
       for ( int j = 0; j < 3; j++ )
@@ -320,11 +367,14 @@ void InterSearch::storeAffineMotion( Mv acAffineMv[2][3], int16_t affineRefIdx[2
       }
       m_affineMotion.affine6ParaRefIdx[i] = affineRefIdx[i];
     }
+    // Define que os parâmetros de affine de 6 parâmetros estão disponíveis
     m_affineMotion.affine6ParaAvail = true;
   }
-
+  
+  // Se o tipo de afinamento é 4 parâmetros e não está disponível ou o índice BCW é padrão
   if ( ( bcwIdx == BCW_DEFAULT || !m_affineMotion.affine4ParaAvail ) && affineType == AFFINEMODEL_4PARAM )
   {
+    // Armazena os vetores de movimento afim de 4 parâmetros
     for ( int i = 0; i < 2; i++ )
     {
       for ( int j = 0; j < 2; j++ )
@@ -336,20 +386,27 @@ void InterSearch::storeAffineMotion( Mv acAffineMv[2][3], int16_t affineRefIdx[2
       }
       m_affineMotion.affine4ParaRefIdx[i] = affineRefIdx[i];
     }
+    // Define que os parâmetros de affine de 4 parâmetros estão disponíveis
     m_affineMotion.affine4ParaAvail = true;
   }
 }
-
+//----------------------------------------------------------------
+/*
+  xTZSearchHelp: função usada para ajudar no processo de busca de vetor de movimento, realizando cálculos 
+  de Soma de Diferenças (SAD) para diferentes pontos de busca. O código inclui considerações para o modo 
+  de subamostragem, custo de movimento e atualização dos melhores resultados.
+*/
 inline void InterSearch::xTZSearchHelp( IntTZSearchStruct& rcStruct, const int iSearchX, const int iSearchY, const uint8_t ucPointNr, const uint32_t uiDistance )
 {
+  // Inicializa a Soma de Diferenças (SAD) como zero
   Distortion  uiSad = 0;
 
 //  CHECK(!( !( rcStruct.searchRange.left > iSearchX || rcStruct.searchRange.right < iSearchX || rcStruct.searchRange.top > iSearchY || rcStruct.searchRange.bottom < iSearchY )), "Unspecified error");
-
+  // Pega um ponteiro para a área de referência na posição de busca
   const Pel* const  piRefSrch = rcStruct.piRefY + iSearchY * rcStruct.iRefStride + iSearchX;
-
+  // Configuração do parâmetro de distância para a função de distância
   m_cDistParam.cur.buf = piRefSrch;
-
+  // Se o modo de subamostragem é 1
   if( 1 == rcStruct.subShiftMode )
   {
     // motion cost
@@ -358,15 +415,18 @@ inline void InterSearch::xTZSearchHelp( IntTZSearchStruct& rcStruct, const int i
     // Skip search if bit cost is already larger than best SAD
     if (uiBitCost < rcStruct.uiBestSad)
     {
+      // Calcula a SAD
       Distortion uiTempSad = m_cDistParam.distFunc( m_cDistParam );
-
+      // Se a SAD atual mais o custo de bits for menor que o melhor SAD
       if((uiTempSad + uiBitCost) < rcStruct.uiBestSad)
       {
         // it's not supposed that any member of DistParams is manipulated beside cur.buf
         int subShift = m_cDistParam.subShift;
         const Pel* pOrgCpy = m_cDistParam.org.buf;
+        // Calcula a SAD subamostrando a imagem
         uiSad += uiTempSad >> m_cDistParam.subShift;
-
+        
+        // Loop para subamostrar a imagem e calcular a SAD
         while( m_cDistParam.subShift > 0 )
         {
           int isubShift           = m_cDistParam.subShift -1;
@@ -374,7 +434,8 @@ inline void InterSearch::xTZSearchHelp( IntTZSearchStruct& rcStruct, const int i
           m_cDistParam.cur.buf = piRefSrch + (rcStruct.iRefStride << isubShift);
           uiTempSad            = m_cDistParam.distFunc( m_cDistParam );
           uiSad               += uiTempSad >> m_cDistParam.subShift;
-
+          
+          // Se a SAD calculada mais os bits de custo excederem o melhor SAD, interrompe o loop
           if(((uiSad << isubShift) + uiBitCost) > rcStruct.uiBestSad)
           {
             break;
@@ -382,13 +443,15 @@ inline void InterSearch::xTZSearchHelp( IntTZSearchStruct& rcStruct, const int i
 
           m_cDistParam.subShift--;
         }
-
+        
+        // Se subamostragem foi concluída
         if(m_cDistParam.subShift == 0)
         {
           uiSad += uiBitCost;
-
+          // Se a SAD atual for menor que o melhor SAD
           if( uiSad < rcStruct.uiBestSad )
           {
+            // Atualiza os melhores resultados
             rcStruct.uiBestSad      = uiSad;
             rcStruct.iBestX         = iSearchX;
             rcStruct.iBestY         = iSearchY;
@@ -399,7 +462,7 @@ inline void InterSearch::xTZSearchHelp( IntTZSearchStruct& rcStruct, const int i
           }
         }
 
-        // restore org ptr
+        // restore org ptr -- // Restaura o ponteiro original para a imagem original e o shift
         m_cDistParam.org.buf  = pOrgCpy;
         m_cDistParam.subShift = subShift;
       }
@@ -407,15 +470,17 @@ inline void InterSearch::xTZSearchHelp( IntTZSearchStruct& rcStruct, const int i
   }
   else
   {
+    // Se o modo de subamostragem não está ativado, calcula diretamente a SAD
     uiSad = m_cDistParam.distFunc( m_cDistParam );
 
     // only add motion cost if uiSad is smaller than best. Otherwise pointless
     // to add motion cost.
+    // Adiciona o custo de movimento apenas se a SAD for menor que o melhor SAD
     if( uiSad < rcStruct.uiBestSad )
     {
-      // motion cost
+      // motion cost -- Custo do movimento
       uiSad += m_pcRdCost->getCostOfVectorWithPredictor( iSearchX, iSearchY, rcStruct.imvShift );
-
+      // Atualiza os melhores resultados
       if( uiSad < rcStruct.uiBestSad )
       {
         rcStruct.uiBestSad      = uiSad;
@@ -430,15 +495,23 @@ inline void InterSearch::xTZSearchHelp( IntTZSearchStruct& rcStruct, const int i
   }
 }
 
-
-
+//----------------------------------------------------------------
+/* 
+  xTZ2PointSearch: Função que realiza uma busca em dois pontos ao redor da posição inicial especificada
+  por rcStruct.iBestX e rcStruct.iBestY. Os offsets (xOffset e yOffset) especificam as posições relativas 
+  dos pontos de busca. A função verifica se esses pontos estão dentro da região de busca definida por 
+  rcStruct.searchRange antes de chamar a função de auxílio xTZSearchHelp para realizar a busca nessas 
+  posições.
+*/
 inline void InterSearch::xTZ2PointSearch( IntTZSearchStruct& rcStruct )
 {
+  // Obtém a região de busca a partir da estrutura de busca
   const SearchRange& sr = rcStruct.searchRange;
-
+  // Obtém a região de busca a partir da estrutura de busca
   static const int xOffset[2][9] = { {  0, -1, -1,  0, -1, +1, -1, -1, +1 }, {  0,  0, +1, +1, -1, +1,  0, +1,  0 } };
   static const int yOffset[2][9] = { {  0,  0, -1, -1, +1, -1,  0, +1,  0 }, {  0, -1, -1,  0, -1, +1, +1, +1, +1 } };
-
+  
+  // Calcula as coordenadas dos dois pontos de busca
   // 2 point search,                   //   1 2 3
   // check only the 2 untested points  //   4 0 5
   // around the start point            //   6 7 8
@@ -448,31 +521,43 @@ inline void InterSearch::xTZ2PointSearch( IntTZSearchStruct& rcStruct )
   const int iY1 = rcStruct.iBestY + yOffset[0][rcStruct.ucPointNr];
   const int iY2 = rcStruct.iBestY + yOffset[1][rcStruct.ucPointNr];
 
+  // Verifica se as coordenadas dos pontos de busca estão dentro da região de busca
   if( iX1 >= sr.left && iX1 <= sr.right && iY1 >= sr.top && iY1 <= sr.bottom )
   {
+    // Chama a função de auxílio para realizar a busca no primeiro ponto
     xTZSearchHelp( rcStruct, iX1, iY1, 0, 2 );
   }
 
   if( iX2 >= sr.left && iX2 <= sr.right && iY2 >= sr.top && iY2 <= sr.bottom )
   {
+    // Chama a função de auxílio para realizar a busca no segundo ponto
     xTZSearchHelp( rcStruct, iX2, iY2, 0, 2 );
   }
 }
-
-
+//----------------------------------------------------------------
+/*
+  xTZ8PointSquareSearch: função usada para realizar uma busca em uma configuração de quadrado ao redor 
+  da posição inicial especificada por iStartX e iStartY. Os pontos de busca são organizados em um padrão 
+  de quadrado, e a função verifica se cada ponto está dentro da região de busca definida por 
+  rcStruct.searchRange antes de chamar a função de auxílio xTZSearchHelp para realizar a busca nessas 
+  posições.
+*/
 inline void InterSearch::xTZ8PointSquareSearch( IntTZSearchStruct& rcStruct, const int iStartX, const int iStartY, const int iDist )
 {
   const SearchRange& sr = rcStruct.searchRange;
   // 8 point search,                   //   1 2 3
   // search around the start point     //   4 0 5
   // with the required  distance       //   6 7 8
+  // Verifica se a distância é válida
   CHECK( iDist == 0 , "Invalid distance");
+  // Calcula as coordenadas dos limites superior, inferior, esquerdo e direito do quadrado de busca
   const int iTop        = iStartY - iDist;
   const int iBottom     = iStartY + iDist;
   const int iLeft       = iStartX - iDist;
   const int iRight      = iStartX + iDist;
+  //Incrementa o contador de iterações
   rcStruct.uiBestRound += 1;
-
+  //Verifica se é possível realizar a busca nos pontos ao redor da posição inicial
   if ( iTop >= sr.top ) // check top
   {
     if ( iLeft >= sr.left ) // check top left
@@ -495,6 +580,7 @@ inline void InterSearch::xTZ8PointSquareSearch( IntTZSearchStruct& rcStruct, con
   {
     xTZSearchHelp( rcStruct, iRight, iStartY, 5, iDist );
   }
+  // Verifica se é possível realizar a busca nos pontos abaixo da posição inicial
   if ( iBottom <= sr.bottom ) // check bottom
   {
     if ( iLeft >= sr.left ) // check bottom left
@@ -511,6 +597,14 @@ inline void InterSearch::xTZ8PointSquareSearch( IntTZSearchStruct& rcStruct, con
   } // check bottom
 }
 
+//----------------------------------------------------------------
+/*
+  A função xTZ8PointDiamondSearch realiza uma busca de 8 pontos ao redor de uma posição inicial, 
+  especificada por iStartX e iStartY. Os pontos de busca são organizados em um padrão de diamante, 
+  e a função verifica se cada ponto está dentro da região de busca definida por rcStruct.searchRange 
+  antes de chamar a função de auxílio xTZSearchHelp para realizar a busca nessas posições. O parâmetro 
+  bCheckCornersAtDist1 controla se os cantos devem ser verificados quando a distância é igual a 1. 
+*/
 inline void InterSearch::xTZ8PointDiamondSearch( IntTZSearchStruct& rcStruct,
                                                  const int iStartX,
                                                  const int iStartY,
@@ -521,24 +615,31 @@ inline void InterSearch::xTZ8PointDiamondSearch( IntTZSearchStruct& rcStruct,
   // 8 point search,                   //   1 2 3
   // search around the start point     //   4 0 5
   // with the required  distance       //   6 7 8
+  // Verifica se a distância é válida
   CHECK( iDist == 0, "Invalid distance" );
+  // Calcula as coordenadas dos limites superior, inferior, esquerdo e direito do diamante de busca
   const int iTop        = iStartY - iDist;
   const int iBottom     = iStartY + iDist;
   const int iLeft       = iStartX - iDist;
   const int iRight      = iStartX + iDist;
+  // Incrementa o contador de iterações
   rcStruct.uiBestRound += 1;
 
   if ( iDist == 1 )
   {
+    // Verifica se é possível realizar a busca nos pontos ao redor da posição inicial
     if ( iTop >= sr.top ) // check top
     {
       if (bCheckCornersAtDist1)
       {
+        // Verifica o ponto superior esquerdo
         if ( iLeft >= sr.left) // check top-left
         {
           xTZSearchHelp( rcStruct, iLeft, iTop, 1, iDist );
         }
+        // Verifica o ponto superior central
         xTZSearchHelp( rcStruct, iStartX, iTop, 2, iDist );
+        // Verifica o ponto superior direito
         if ( iRight <= sr.right ) // check middle right
         {
           xTZSearchHelp( rcStruct, iRight, iTop, 3, iDist );
@@ -546,26 +647,33 @@ inline void InterSearch::xTZ8PointDiamondSearch( IntTZSearchStruct& rcStruct,
       }
       else
       {
+        // Verifica apenas o ponto superior central
         xTZSearchHelp( rcStruct, iStartX, iTop, 2, iDist );
       }
     }
+    // Verifica o ponto médio esquerdo
     if ( iLeft >= sr.left ) // check middle left
     {
       xTZSearchHelp( rcStruct, iLeft, iStartY, 4, iDist );
     }
+    // Verifica o ponto médio direito
     if ( iRight <= sr.right ) // check middle right
     {
       xTZSearchHelp( rcStruct, iRight, iStartY, 5, iDist );
     }
+    //Verifica se é possível realizar a busca nos pontos abaixo da posição inicial
     if ( iBottom <= sr.bottom ) // check bottom
     {
       if (bCheckCornersAtDist1)
       {
+        // Verifica o ponto inferior esquerdo
         if ( iLeft >= sr.left) // check top-left
         {
           xTZSearchHelp( rcStruct, iLeft, iBottom, 6, iDist );
         }
+        // Verifica o ponto inferior central
         xTZSearchHelp( rcStruct, iStartX, iBottom, 7, iDist );
+        // Verifica o ponto inferior direito
         if ( iRight <= sr.right ) // check middle right
         {
           xTZSearchHelp( rcStruct, iRight, iBottom, 8, iDist );
@@ -573,6 +681,7 @@ inline void InterSearch::xTZ8PointDiamondSearch( IntTZSearchStruct& rcStruct,
       }
       else
       {
+        // Verifica apenas o ponto inferior central
         xTZSearchHelp( rcStruct, iStartX, iBottom, 7, iDist );
       }
     }
@@ -581,14 +690,17 @@ inline void InterSearch::xTZ8PointDiamondSearch( IntTZSearchStruct& rcStruct,
   {
     if ( iDist <= 8 )
     {
+      // Calcula as coordenadas dos limites superior, inferior, esquerdo e direito para a busca de meio-diamante
       const int iTop_2      = iStartY - (iDist>>1);
       const int iBottom_2   = iStartY + (iDist>>1);
       const int iLeft_2     = iStartX - (iDist>>1);
       const int iRight_2    = iStartX + (iDist>>1);
-
+      
+      // Verifica se a região de busca inclui a borda
       if (  iTop >= sr.top && iLeft >= sr.left &&
            iRight <= sr.right && iBottom <= sr.bottom ) // check border
       {
+        // Realiza a busca em pontos específicos ao redor da posição inicial
         xTZSearchHelp( rcStruct, iStartX,  iTop,      2, iDist    );
         xTZSearchHelp( rcStruct, iLeft_2,  iTop_2,    1, iDist>>1 );
         xTZSearchHelp( rcStruct, iRight_2, iTop_2,    3, iDist>>1 );
@@ -600,6 +712,7 @@ inline void InterSearch::xTZ8PointDiamondSearch( IntTZSearchStruct& rcStruct,
       }
       else // check border
       {
+        // Verifica pontos específicos ao redor da posição inicial, considerando a borda da região de busca
         if ( iTop >= sr.top ) // check top
         {
           xTZSearchHelp( rcStruct, iStartX, iTop, 2, iDist );
@@ -645,10 +758,12 @@ inline void InterSearch::xTZ8PointDiamondSearch( IntTZSearchStruct& rcStruct,
       if ( iTop >= sr.top && iLeft >= sr.left &&
            iRight <= sr.right && iBottom <= sr.bottom ) // check border
       {
+        // Pontos principais
         xTZSearchHelp( rcStruct, iStartX, iTop,    0, iDist );
         xTZSearchHelp( rcStruct, iLeft,   iStartY, 0, iDist );
         xTZSearchHelp( rcStruct, iRight,  iStartY, 0, iDist );
         xTZSearchHelp( rcStruct, iStartX, iBottom, 0, iDist );
+        // Pontos diagonais
         for ( int index = 1; index < 4; index++ )
         {
           const int iPosYT = iTop    + ((iDist>>2) * index);
@@ -663,6 +778,7 @@ inline void InterSearch::xTZ8PointDiamondSearch( IntTZSearchStruct& rcStruct,
       }
       else // check border
       {
+        // Verifica pontos principais
         if ( iTop >= sr.top ) // check top
         {
           xTZSearchHelp( rcStruct, iStartX, iTop, 0, iDist );
@@ -679,6 +795,7 @@ inline void InterSearch::xTZ8PointDiamondSearch( IntTZSearchStruct& rcStruct,
         {
           xTZSearchHelp( rcStruct, iStartX, iBottom, 0, iDist );
         }
+        // Verifica pontos diagonais
         for ( int index = 1; index < 4; index++ )
         {
           const int iPosYT = iTop    + ((iDist>>2) * index);
@@ -713,7 +830,7 @@ inline void InterSearch::xTZ8PointDiamondSearch( IntTZSearchStruct& rcStruct,
     } // iDist <= 8
   } // iDist == 1
 }
-
+//----------------------------------------------------------------
 #if GDR_ENABLED
 Distortion InterSearch::xPatternRefinement(const PredictionUnit &pu, RefPicList eRefPicList, int refIdx,
                                            const CPelBuf *pcPatternKey, Mv baseRefMv, int iFrac, Mv &rcMvFrac,
@@ -726,41 +843,56 @@ Distortion InterSearch::xPatternRefinement( const CPelBuf* pcPatternKey,
                                             bool bAllowUseOfHadamard )
 #endif
 {
+  // Variável para armazenar a distorção
   Distortion dist;
+  // Melhor distorção encontrada inicializada com o máximo possível
   Distortion distBest   = std::numeric_limits<Distortion>::max();
+  // Direção do melhor refinamento
   uint32_t   directBest = 0;
 
 #if GDR_ENABLED
+  // Obtenção da referência para a estrutura de codificação
   const CodingStructure &cs = *pu.cs;
+  // Verificação se é uma codificação GDR limpa
   const bool isEncodeGdrClean = cs.sps->getGDREnabledFlag() && cs.pcv->isEncoder && ((cs.picHeader->getInGdrInterval() && cs.isClean(pu.Y().topRight(), CHANNEL_TYPE_LUMA)) || (cs.picHeader->getNumVerVirtualBoundaries() == 0));
+  // Flags para controle de condicoes
   bool                   diskOk           = false;
   bool                   distBestOk       = false;
   bool allOk = true;
 #endif
+  // Padrao de referencia e configuracao de distorcao
   Pel*  piRefPos;
   int iRefStride = pcPatternKey->width + 1;
+  // Configuração da distorção para cálculos
   m_pcRdCost->setDistParam( m_cDistParam, *pcPatternKey, m_filteredBlock[0][0][0], iRefStride, m_lumaClpRng.bd, COMPONENT_Y, 0, 1, m_pcEncCfg->getUseHADME() && bAllowUseOfHadamard );
-
+  
+  // Vetores de movimento refinados
   const Mv* pcMvRefine = (iFrac == 2 ? s_acMvRefineH : s_acMvRefineQ);
 #if GDR_ENABLED
+  // Verificacao de condicoes para a codificacao GDR limpa
   if (isEncodeGdrClean)
   {
     rbCleanCandExist = false;
   }
 #endif
+  // Loop para iteracao sobre possiveis refinamentos
   for (uint32_t i = 0; i < 9; i++)
   {
+    // Verificacao de condicao para possivel saida antecipada
     if (m_skipFracME && i > 0)
     {
       break;
     }
+    // Obtencao do vetor de movimento de teste
     Mv cMvTest = pcMvRefine[i];
     cMvTest += baseRefMv;
-
+    
+    // Cálculo de deslocamento de bits para coordenadas horizontais e verticais
     int horVal = cMvTest.getHor() * iFrac;
     int verVal = cMvTest.getVer() * iFrac;
+    // Posicao de referencia para calculo da distorcao
     piRefPos = m_filteredBlock[verVal & 3][horVal & 3][0];
-
+    // Ajuste da posicao de referencia
     if (horVal == 2 && (verVal & 1) == 0)
     {
       piRefPos += 1;
@@ -769,24 +901,31 @@ Distortion InterSearch::xPatternRefinement( const CPelBuf* pcPatternKey,
     {
       piRefPos += iRefStride;
     }
+    // Obtencao do vetor de movimento de teste apos ajuste
     cMvTest = pcMvRefine[i];
     cMvTest += rcMvFrac;
 
-
+    // Configuracao do buffer de referencia atual para o calculo da distorcao
     m_cDistParam.cur.buf   = piRefPos;
+    // Calculo da distorcao
     dist                   = m_cDistParam.distFunc(m_cDistParam);
+    // Adicao do custo do vetor de movimento
     dist += m_pcRdCost->getCostOfVectorWithPredictor(cMvTest.getHor(), cMvTest.getVer(), 0);
 
 #if GDR_ENABLED
+    // Verificacao geral de condicoes
     allOk = (dist < distBest);
-
+    // Verificacao de condicoes especificas para a codificacao GDR limpa
     if (isEncodeGdrClean)
     {
+      // Obtencao do vetor de movimento apos ajuste de precisao
       Mv motion = cMvTest;
       MvPrecision curPrec = (iFrac == 2 ? MV_PRECISION_HALF : MV_PRECISION_QUARTER);
       motion.changePrecision(curPrec, MV_PRECISION_INTERNAL);
+      // Verificacao de limpeza na regiao de referencia
       diskOk = cs.isClean(pu.Y().bottomRight(), motion, eRefPicList, refIdx);
-
+      
+      // Atualizacao de condicao geral
       if (diskOk)
       {
         allOk = (distBestOk) ? (dist < distBest) : true;
@@ -799,15 +938,20 @@ Distortion InterSearch::xPatternRefinement( const CPelBuf* pcPatternKey,
 #endif
 
 #if GDR_ENABLED
+    // Verificação geral de condições após ajuste para codificação GDR limpa
     if (allOk)
 #else
+    // Verificação geral de condições
     if (dist < distBest)
 #endif
     {
+      // Atualização do vetor de movimento refinado e melhor distorção
       distBest                                   = dist;
       directBest                                 = i;
+      // Atualização do parâmetro de distorção máximo para possível saída antecipada
       m_cDistParam.maximumDistortionForEarlyExit = dist;
 #if GDR_ENABLED
+      // Atualização de condições específicas para codificação GDR limpa
       if (isEncodeGdrClean)
       {
         distBestOk       = diskOk;
@@ -816,43 +960,59 @@ Distortion InterSearch::xPatternRefinement( const CPelBuf* pcPatternKey,
 #endif
     }
 #if GDR_ENABLED
+    // Verificação de condições específicas para codificação GDR limpa
     if (isEncodeGdrClean)
     {
       if (!rbCleanCandExist)
       {
+        // Atualização da melhor distorção para um valor alto
         distBest = 65535;
       }
     }
 #endif
   }
-
+  // Atualização do melhor vetor de movimento refinado e distorção correspondente
   rcMvFrac = pcMvRefine[directBest];
-
+  // Retorno da melhor distorção encontrada
   return distBest;
 }
-
+//----------------------------------------------------------------
+/*
+  xGetInterPredictionError: calcula o erro de predição para uma unidade de predição (PU) específica. 
+*/
 Distortion InterSearch::xGetInterPredictionError( PredictionUnit& pu, PelUnitBuf& origBuf, const RefPicList &eRefPicList )
 {
+  // Aloca um buffer para armazenar a predicao
   PelUnitBuf predBuf = m_tmpStorageLCU.getBuf( UnitAreaRelative(*pu.cu, pu) );
-
+  // Realiza a compensacao de movimento (motion compensation)
   motionCompensation( pu, predBuf, eRefPicList );
-
+  // Configura os parametros de distorcao
   DistParam cDistParam;
   cDistParam.applyWeight = false;
-
+  // Configura os parametros de distorcao com os buffers original e predito
   m_pcRdCost->setDistParam(cDistParam, origBuf.Y(), predBuf.Y(), pu.cs->sps->getBitDepth(CHANNEL_TYPE_LUMA), COMPONENT_Y, m_pcEncCfg->getUseHADME() && !pu.cu->slice->getDisableSATDForRD());
-
+  // Retorna a distorcao calculada
   return (Distortion)cDistParam.distFunc( cDistParam );
 }
-
+//----------------------------------------------------------------
 /// add ibc search functions here
-
+/*
+  xIBCSearchMVCandUpdate: função que atualiza um vetor de candidatos para motion vectors (MVs) usando um método de pesquisa 
+  baseado na soma absoluta das diferenças (SAD). A função recebe a SAD atual, as coordenadas x e y, os melhores candidatos 
+  de SAD (sadBestCand), e um vetor de MVs (cMVCand).
+  Parece ser usada durante a pesquisa de candidatos para Intra-Block Copy (IBC). A SAD é uma métrica comum usada para avaliar 
+  a qualidade da predição, e esta função está envolvida na atualização dos melhores candidatos para MVs durante essa pesquisa. 
+  O vetor cMVCand armazena os candidatos de MVs, e sadBestCand armazena as SADs correspondentes. O código mantém os melhores 
+  candidatos ordenados pelo valor de SAD.
+*/
 void InterSearch::xIBCSearchMVCandUpdate(Distortion  sad, int x, int y, Distortion* sadBestCand, static_vector<Mv, CHROMA_REFINEMENT_CANDIDATES>& cMVCand)
 {
+  // Inicializa o índice j como o último índice do vetor de candidatos
   int j = CHROMA_REFINEMENT_CANDIDATES - 1;
-
+  // Verifica se a SAD atual é menor que a SAD do último candidato no vetor
   if (sad < sadBestCand[CHROMA_REFINEMENT_CANDIDATES - 1])
   {
+    // Atualiza o índice j para a posição correta no vetor
     for (int t = CHROMA_REFINEMENT_CANDIDATES - 1; t >= 0; t--)
     {
       if (sad < sadBestCand[t])
@@ -860,18 +1020,25 @@ void InterSearch::xIBCSearchMVCandUpdate(Distortion  sad, int x, int y, Distorti
         j = t;
       }
     }
-
+    // Atualiza os vetores de candidatos deslocando os valores para a direita
     for (int k = CHROMA_REFINEMENT_CANDIDATES - 1; k > j; k--)
     {
       sadBestCand[k] = sadBestCand[k - 1];
 
       cMVCand[k].set(cMVCand[k - 1].getHor(), cMVCand[k - 1].getVer());
     }
+    // Insere a nova SAD e as coordenadas MV na posição correta
     sadBestCand[j] = sad;
     cMVCand[j].set(x, y);
   }
 }
-
+//----------------------------------------------------------------
+/*
+  xIBCSearchMVChromaRefine: realiza uma etapa de refinamento na pesquisa de motion vectors (MVs) para a codificação de chroma, 
+  mais especificamente para o modo de cópia intra-bloco (IBC) em um vídeo. Itera sobre os candidatos de refinamento, verifica 
+  se são válidos em termos de SAD e posição, e executa o restante do código de refinamento para os MVs válidos. A função retorna 
+  o índice do melhor candidato de refinamento.
+*/
 int InterSearch::xIBCSearchMVChromaRefine(PredictionUnit& pu,
   int         roiWidth,
   int         roiHeight,
@@ -882,6 +1049,7 @@ int InterSearch::xIBCSearchMVChromaRefine(PredictionUnit& pu,
 
 )
 {
+  // Verifica se a chroma está habilitada e se o bloco Cb é válido
   if ( (!isChromaEnabled(pu.chromaFormat)) || (!pu.Cb().valid()) )
   {
     return 0;
@@ -898,64 +1066,79 @@ int InterSearch::xIBCSearchMVChromaRefine(PredictionUnit& pu,
 
   int picWidth = pu.cs->slice->getPPS()->getPicWidthInLumaSamples();
   int picHeight = pu.cs->slice->getPPS()->getPicHeightInLumaSamples();
-
+  
+  // Define uma área para todos os componentes (Y, Cb, Cr) do bloco
   UnitArea allCompBlocks(pu.chromaFormat, (Area)pu.block(COMPONENT_Y));
+  // Loop sobre os candidatos de refinamento
   for (int cand = 0; cand < CHROMA_REFINEMENT_CANDIDATES; cand++)
   {
+    // Verifica se a SAD do candidato atual é a máxima (indica que não é um candidato válido)
     if (sadBestCand[cand] == std::numeric_limits<Distortion>::max())
     {
       continue;
     }
 
+    // Verifica se as componentes horizontal e vertical do MV são ambas zero
     if ((!cMVCand[cand].getHor()) && (!cMVCand[cand].getVer()))
     {
       continue;
     }
 
+    // Verifica se o bloco não ultrapassa os limites da imagem na direção vertical
     if (((int)(cuPelY + cMVCand[cand].getVer() + roiHeight) >= picHeight) || ((cuPelY + cMVCand[cand].getVer()) < 0))
     {
       continue;
     }
-
+    // Verifica se o bloco não ultrapassa os limites da imagem na direção horizontal
     if (((int)(cuPelX + cMVCand[cand].getHor() + roiWidth) >= picWidth) || ((cuPelX + cMVCand[cand].getHor()) < 0))
     {
       continue;
     }
-
+//----------------------------------------------------------------
 #if GDR_ENABLED
+    // Obtém uma referência para a CodingStructure do bloco (pu.cs)
     CodingStructure &cs = *pu.cs;
     const bool isEncodeGdrClean = cs.sps->getGDREnabledFlag() && cs.pcv->isEncoder && ((cs.picHeader->getInGdrInterval() && cs.isClean(pu.Y().topRight(), CHANNEL_TYPE_LUMA)) || (cs.picHeader->getNumVerVirtualBoundaries() == 0));
-
+    // Verifica se a codificação GDR Clean está habilitada
     if (isEncodeGdrClean)
     {
+      // Obtém a posição do bloco no canto inferior direito (BR) da área definida pelos parâmetros
       Position curBR(cuPelX + roiWidth + cMVCand[cand].getHor() - 1, cuPelY + roiHeight + cMVCand[cand].getVer() - 1);    // is this correct???
+      // Verifica se a posição BR não está limpa (indicando que o bloco ultrapassa os limites limpos)
       if (!cs.isClean(curBR, CHANNEL_TYPE_LUMA))
       {
-        continue;
+        continue; // Ignora este candidato e passa para o próximo
       }
     }
 #endif
-
+//----------------------------------------------------------------
+    // Inicializa o valor temporário de SAD
     tempSad = sadBestCand[cand];
-
+    
+    // Atualiza a posição de movimento da PU com a candidatura atual
     pu.mv[0] = cMVCand[cand];
     pu.mv[0].changePrecision(MV_PRECISION_INT, MV_PRECISION_INTERNAL);
     pu.interDir = 1;
     pu.refIdx[0] = pu.cs->slice->getNumRefIdx(REF_PIC_LIST_0); // last idx in the list
-
+    
+    // Realiza a compensação de movimento
     PelUnitBuf predBufTmp = m_tmpPredStorage[REF_PIC_LIST_0].getBuf(UnitAreaRelative(*pu.cu, pu));
     motionCompensation(pu, predBufTmp, REF_PIC_LIST_0);
-
+    
+    // Itera sobre as componentes croma
     for (unsigned int ch = COMPONENT_Cb; ch < ::getNumberValidComponents(pu.chromaFormat); ch++)
     {
+      // Calcula as dimensões da área de interesse
       width = roiWidth >> ::getComponentScaleX(ComponentID(ch), pu.chromaFormat);
       height = roiHeight >> ::getComponentScaleY(ComponentID(ch), pu.chromaFormat);
-
+      
+      // Obtém o buffer original
       PelUnitBuf origBuf = pu.cs->getOrgBuf(allCompBlocks);
       PelUnitBuf* pBuf = &origBuf;
       CPelBuf  tmpPattern = pBuf->get(ComponentID(ch));
       pOrg = (Pel*)tmpPattern.buf;
 
+      // Obtém o buffer de referência
       Picture* refPic = pu.cu->slice->getPic();
       const CPelBuf refBuf = refPic->getRecoBuf(allCompBlocks.blocks[ComponentID(ch)]);
       pRef = (Pel*)refBuf.buf;
@@ -963,13 +1146,14 @@ int InterSearch::xIBCSearchMVChromaRefine(PredictionUnit& pu,
       refStride = refBuf.stride;
       orgStride = tmpPattern.stride;
 
+      // Obtém o buffer de referência para a componente croma
       //ComponentID compID = (ComponentID)ch;
       PelUnitBuf* pBufRef = &predBufTmp;
       CPelBuf  tmpPatternRef = pBufRef->get(ComponentID(ch));
       pRef = (Pel*)tmpPatternRef.buf;
       refStride = tmpPatternRef.stride;
 
-
+      // Calcula a SAD
       for (int row = 0; row < height; row++)
       {
         for (int col = 0; col < width; col++)
@@ -981,37 +1165,47 @@ int InterSearch::xIBCSearchMVChromaRefine(PredictionUnit& pu,
       }
     }
 
+    // Atualiza o melhor SAD e o índice do melhor candidato
     if (tempSad < sadBest)
     {
       sadBest = tempSad;
       bestCandIdx = cand;
     }
   }
-
+  // Retorna o indice do melhor candidato
   return bestCandIdx;
 }
 
+// xMergeCandLists: mescla duas listas de vetores `static_vector` (`dst` e `src`) de objetos `Mv`
+// Ela mescla candidatos da lista de origem na lista de destino
+// A condição 'dst.size() < MAX_DST_NUM' verifica se a lista de destino ainda não atingiu o tamanho máximo permitido ('MAX_DST_NUM')
 template <size_t MAX_DST_NUM, size_t MAX_SRC_NUM>
 static void xMergeCandLists(static_vector<Mv, MAX_DST_NUM>& dst, const static_vector<Mv, MAX_SRC_NUM>& src)
 {
+  // Verifica se a lista de destino ainda não atingiu o tamanho máximo
   if (dst.size() < MAX_DST_NUM)
   {
+    // Itera sobre os candidatos da lista de origem
     for (const auto& candSrc : src)
     {
+      // Verifica se o candidato da lista de origem não é um objeto Mv vazio e se ainda não existe na lista de destino
       if (candSrc != Mv() && std::find(dst.begin(), dst.end(), candSrc) == dst.end())
       {
+        // Adiciona o candidato à lista de destino
         dst.push_back(candSrc);
+        // Verifica se a lista de destino atingiu o tamanho máximo
         if (dst.size() >= MAX_DST_NUM)
         {
-          return;
+          return; //Retorna se atingiu o tamanho máximo
         }
       }
     }
   }
 }
-
+//----------------------------------------------------------------
 void InterSearch::xIntraPatternSearch(PredictionUnit& pu, IntTZSearchStruct&  cStruct, Mv& rcMv, Distortion&  ruiCost, Mv*  pcMvSrchRngLT, Mv*  pcMvSrchRngRB, Mv* pcMvPred)
 {
+ // Configuracao de Parametros Iniciais
   const int   srchRngHorLeft = pcMvSrchRngLT->getHor();
   const int   srchRngHorRight = pcMvSrchRngRB->getHor();
   const int   srchRngVerTop = pcMvSrchRngLT->getVer();
@@ -1026,6 +1220,7 @@ void InterSearch::xIntraPatternSearch(PredictionUnit& pu, IntTZSearchStruct&  cS
   int          roiWidth = pu.lwidth();
   int          roiHeight = pu.lheight();
 
+  // Inicializacao de Variaveis
   Distortion  sad;
   Distortion  sadBest = std::numeric_limits<Distortion>::max();
   int         bestX = 0;
@@ -1049,6 +1244,7 @@ void InterSearch::xIntraPatternSearch(PredictionUnit& pu, IntTZSearchStruct&  cS
     cMVCand.push_back(Mv());
   }
 
+  // Configuracao de parametros de distancia
   m_cDistParam.useMR = false;
   m_pcRdCost->setDistParam(m_cDistParam, *cStruct.pcPatternKey, cStruct.piRefY, cStruct.iRefStride, m_lumaClpRng.bd, COMPONENT_Y, cStruct.subShiftMode);
 
@@ -1061,6 +1257,7 @@ void InterSearch::xIntraPatternSearch(PredictionUnit& pu, IntTZSearchStruct&  cS
 
     Distortion tempSadBest = 0;
 
+    // Pesquisa de Blocos Vetoriais (BV)
     int srLeft = srchRngHorLeft, srRight = srchRngHorRight, srTop = srchRngVerTop, srBottom = srchRngVerBottom;
     m_acBVs.clear();
     xMergeCandLists(m_acBVs, m_defaultCachedBvs);
@@ -1068,16 +1265,18 @@ void InterSearch::xIntraPatternSearch(PredictionUnit& pu, IntTZSearchStruct&  cS
     static_vector<Mv, IBC_NUM_CANDIDATES> mvPredEncOnly;
     PU::getIbcMVPsEncOnly(pu, mvPredEncOnly);
     xMergeCandLists(m_acBVs, mvPredEncOnly);
-
+    
+    // Iteracao sobre candidatos de blocos vetoriais
     for (const auto& cand : m_acBVs)
     {
       int xPred = cand.getHor();
       int yPred = cand.getVer();
-
+      // Verificar a validade do candidato
       if (!(xPred == 0 && yPred == 0)
         && !((yPred < srTop) || (yPred > srBottom))
         && !((xPred < srLeft) || (xPred > srRight)))
       {
+        // Verificação adicional para validade considerando GDR Clean
         bool validCand = searchBv(pu, cuPelX, cuPelY, roiWidth, roiHeight, picWidth, picHeight, xPred, yPred, lcuWidth);
 #if GDR_ENABLED
         if (isEncodeGdrClean)
@@ -1086,6 +1285,7 @@ void InterSearch::xIntraPatternSearch(PredictionUnit& pu, IntTZSearchStruct&  cS
           validCand = validCand && cs.isClean(BvBR, CHANNEL_TYPE_LUMA);
         }
 #endif
+        // Calcular SAD para o candidato e atualizar os melhores candidatos encontrados
         if (validCand)
         {
           sad = m_pcRdCost->getBvCostMultiplePreds(xPred, yPred, pu.cs->sps->getAMVREnabledFlag());
@@ -1096,65 +1296,93 @@ void InterSearch::xIntraPatternSearch(PredictionUnit& pu, IntTZSearchStruct&  cS
         }
       }
     }
-
+    // Selecao do melhor candidato
     bestX = cMVCand[0].getHor();
     bestY = cMVCand[0].getVer();
     rcMv.set(bestX, bestY);
     sadBest = sadBestCand[0];
 
+/*
+  Neste trecho do código, a pesquisa é realizada em direções específicas no eixo vertical (y). A verificação searchBv é realizada 
+  para garantir que o candidato seja válido. Se o GDR Clean estiver habilitado, é feita uma verificação adicional para garantir que 
+  a posição do candidato não esteja limpa no canal Luma. Se a posição não estiver limpa, o candidato é ignorado e o loop continua com 
+  a próxima iteração.
+*/
+    // Pesquisa Adicional em Direções Específicas
     const int boundY = (0 - roiHeight - puPelOffsetY);
     for (int y = std::max(srchRngVerTop, 0 - cuPelY); y <= boundY; ++y)
     {
+      // Verificação de validade considerando GDR Clean
       if (!searchBv(pu, cuPelX, cuPelY, roiWidth, roiHeight, picWidth, picHeight, 0, y, lcuWidth))
       {
+        // Se a pesquisa BV não for válida, continue para a próxima iteração
         continue;
       }
 #if GDR_ENABLED
+      // Se o GDR Clean estiver habilitado
       if (isEncodeGdrClean)
       {
+        // Obtém a posição da parte inferior direita do bloco de pesquisa
         Position BvBR(cuPelX + roiWidth - 1, cuPelY + roiHeight + y - 1);
+        // Verifica se a posição não está limpa no canal Luma
         if (!cs.isClean(BvBR, CHANNEL_TYPE_LUMA))
         {
+          // Se não estiver limpo, ignore este candidato
           continue;
         }
       }
 #endif
-
+//----------------------------------------------------------------
+/*
+  Neste trecho do código, são realizadas iterações para pesquisa de candidatos em direções específicas ao longo do eixo horizontal 
+  (x). Os candidatos são avaliados quanto à sua distorção, e as melhores opções são atualizadas na lista de candidatos cMVCand. Se 
+  uma distorção suficientemente baixa for alcançada, as melhores coordenadas e a distorção são atualizadas, e o loop é encerrado. 
+  Em seguida, é realizado um segundo loop para pesquisa de candidatos em direções negativas de x, com verificações semelhantes de 
+  validade e GDR Clean.
+*/ 
+      // Inicialização de variáveis para pesquisa de melhor vetor de movimento para IBC
       sad = m_pcRdCost->getBvCostMultiplePreds(0, y, pu.cs->sps->getAMVREnabledFlag());
       m_cDistParam.cur.buf = piRefSrch + cStruct.iRefStride * y;
       sad += m_cDistParam.distFunc(m_cDistParam);
-
+      // Atualização da lista de candidatos IBC com o novo vetor de movimento
       xIBCSearchMVCandUpdate(sad, 0, y, sadBestCand, cMVCand);
       tempSadBest = sadBestCand[0];
+      // Verifica se a distorção do candidato é suficientemente baixa
       if (sadBestCand[0] <= 3)
       {
+        // Atualiza as melhores coordenadas e distorção
         bestX = cMVCand[0].getHor();
         bestY = cMVCand[0].getVer();
         sadBest = sadBestCand[0];
         rcMv.set(bestX, bestY);
         ruiCost = sadBest;
-        goto end;
+        goto end;        // Sai do loop
       }
     }
-
+    // Limites da pesquisa em X
     const int boundX = std::max(srchRngHorLeft, -cuPelX);
+    // Loop para pesquisa de candidatos em X
     for (int x = 0 - roiWidth - puPelOffsetX; x >= boundX; --x)
     {
+      // Verificação de validade considerando GDR Clean
       if (!searchBv(pu, cuPelX, cuPelY, roiWidth, roiHeight, picWidth, picHeight, x, 0, lcuWidth))
       {
-        continue;
+        continue;        // Se a pesquisa BV não for válida, continue para a próxima iteração
       }
 #if GDR_ENABLED
+      // Se o GDR Clean estiver habilitado
       if (isEncodeGdrClean)
       {
+        // Obtém a posição da parte inferior direita do bloco de pesquisa
         Position BvBR(cuPelX + roiWidth + x - 1, cuPelY + roiHeight - 1);
+        // Verifica se a posição não está limpa no canal Luma
         if (!cs.isClean(BvBR, CHANNEL_TYPE_LUMA))
         {
-          continue;
+          continue;        // Se não estiver limpo, ignore este candidato
         }
       }
 #endif
-
+//----------------------------------------------------------------     
       sad = m_pcRdCost->getBvCostMultiplePreds(x, 0, pu.cs->sps->getAMVREnabledFlag());
       m_cDistParam.cur.buf = piRefSrch + x;
       sad += m_cDistParam.distFunc(m_cDistParam);

@@ -1640,7 +1640,13 @@ Distortion RdCost::xGetMRSAD64( const DistParam &rcDtParam )
 }
 
 Distortion RdCost::xGetMRSAD48( const DistParam &rcDtParam )
+{Distortion RdCost::xGetSSE( const DistParam &rcDtParam )
 {
+  if ( rcDtParam.applyWeight )
+  {
+    return RdCostWeightPrediction::xGetSSEw( rcDtParam );
+  }
+
   const Pel* piOrg      = rcDtParam.org.buf;
   const Pel* piCur      = rcDtParam.cur.buf;
   int        rows       = rcDtParam.org.height;

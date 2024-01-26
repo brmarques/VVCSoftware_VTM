@@ -1382,63 +1382,72 @@ void InterSearch::xIntraPatternSearch(PredictionUnit& pu, IntTZSearchStruct&  cS
         }
       }
 #endif
-//----------------------------------------------------------------     
+//----------------------------------------------------------------
+      // Inicialização de variáveis para pesquisa de melhor vetor de movimento para IBC
       sad = m_pcRdCost->getBvCostMultiplePreds(x, 0, pu.cs->sps->getAMVREnabledFlag());
       m_cDistParam.cur.buf = piRefSrch + x;
       sad += m_cDistParam.distFunc(m_cDistParam);
 
-
+      // Atualização da lista de candidatos IBC com o novo vetor de movimento
       xIBCSearchMVCandUpdate(sad, x, 0, sadBestCand, cMVCand);
       tempSadBest = sadBestCand[0];
+      // Verifica se a distorção do candidato é suficientemente baixa
       if (sadBestCand[0] <= 3)
       {
+        // Atualiza as melhores coordenadas e distorção
         bestX = cMVCand[0].getHor();
         bestY = cMVCand[0].getVer();
         sadBest = sadBestCand[0];
         rcMv.set(bestX, bestY);
         ruiCost = sadBest;
-        goto end;
+        goto end;        // Sai do loop
       }
     }
-
+    
+    // Atualização das melhores coordenadas e distorção com base na lista de candidatos
     bestX = cMVCand[0].getHor();
     bestY = cMVCand[0].getVer();
     sadBest = sadBestCand[0];
+    // Verifica se as melhores coordenadas são próximas do vetor de movimento nulo ou a distorção é baixa
     if ((!bestX && !bestY) || (sadBest - m_pcRdCost->getBvCostMultiplePreds(bestX, bestY, pu.cs->sps->getAMVREnabledFlag()) <= 32))
     {
-      //chroma refine
+      //chroma refine     // Refino cromático das melhores coordenadas
       bestCandIdx = xIBCSearchMVChromaRefine(pu, roiWidth, roiHeight, cuPelX, cuPelY, sadBestCand, cMVCand);
       bestX = cMVCand[bestCandIdx].getHor();
       bestY = cMVCand[bestCandIdx].getVer();
       sadBest = sadBestCand[bestCandIdx];
       rcMv.set(bestX, bestY);
       ruiCost = sadBest;
-      goto end;
+      goto end;        // Sai do loop
     }
 
-
+    // Verifica se as dimensões da unidade de predição são menores que 16x16
     if (pu.lwidth() < 16 && pu.lheight() < 16)
     {
+      // Loop para varredura vertical de coordenadas
       for (int y = std::max(srchRngVerTop, -cuPelY); y <= srchRngVerBottom; y += 2)
       {
+        // Verifica condições para continuar a iteração
         if ((y == 0) || ((int)(cuPelY + y + roiHeight) >= picHeight))
         {
           continue;
         }
-
+        // Loop para varredura horizontal de coordenadas
         for (int x = std::max(srchRngHorLeft, -cuPelX); x <= srchRngHorRight; x++)
         {
+          // Verifica condições para continuar a iteração
           if ((x == 0) || ((int)(cuPelX + x + roiWidth) >= picWidth))
           {
             continue;
           }
-
+          // Verifica se a pesquisa Bv é válida
           if (!searchBv(pu, cuPelX, cuPelY, roiWidth, roiHeight, picWidth, picHeight, x, y, lcuWidth))
           {
             continue;
           }
 
 #if GDR_ENABLED
+          // Verificação de validade considerando GDR Clean
           if (isEncodeGdrClean)
           {
             Position BvBR(cuPelX + roiWidth + x - 1, cuPelY + roiHeight + y - 1);
@@ -1594,7 +1603,7 @@ void InterSearch::xIntraPatternSearch(PredictionUnit& pu, IntTZSearchStruct&  cS
       }
     }
   }
-
+//----------------------------------------------------------------
   bestCandIdx = xIBCSearchMVChromaRefine(pu, roiWidth, roiHeight, cuPelX, cuPelY, sadBestCand, cMVCand);
 
   bestX = cMVCand[bestCandIdx].getHor();

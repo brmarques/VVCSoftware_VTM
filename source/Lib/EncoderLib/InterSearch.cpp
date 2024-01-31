@@ -2683,20 +2683,24 @@ bool InterSearch::xRectHashInterEstimation(PredictionUnit& pu, RefPicList& bestR
           }
 #endif
 //----------------------------------------------------------------
+          // Incrementa o custo com a quantidade de bits referentes ao índice de referência
           curMVPbits += bitsOnRefIdx;
-
+          // Configuração do buffer de referência para o bloco atual
           m_cDistParam.cur.buf = refBufStart + (*it).y*refStride + (*it).x;
+          // Cálculo da SAD (Soma das Diferenças Absolutas) atual e custo atual
           Distortion currSad = m_cDistParam.distFunc(m_cDistParam);
           Distortion currCost = currSad + m_pcRdCost->getCost(curMVPbits);
 
-          if (!isPerfectMatch)
+          if (!isPerfectMatch)        // Verificação de correspondência perfeita
           {
+            // Verifica se a QP (Quantization Parameter) do bloco de referência é menor ou igual à QP do bloco atual
             if (pu.cu->slice->getRefPic(eRefPicList, refIdx)->slices[0]->getSliceQp() <= pu.cu->slice->getSliceQp())
             {
               isPerfectMatch = true;
             }
           }
 
+          // Atualização do melhor custo e dos parâmetros relacionados
           if (currCost < bestCost)
           {
             bestCost = currCost;
@@ -2705,6 +2709,7 @@ bool InterSearch::xRectHashInterEstimation(PredictionUnit& pu, RefPicList& bestR
             bestMv = cMv;
             bestMVPIndex = curMVPIdx;
             imvBest = pu.cu->imv;
+            // Cálculo do vetor de diferença de movimento (MVD) para diferentes precisões de MV
             if (pu.cu->imv == 2)
             {
               bestMvd = cMv - currAMVPInfo4Pel.mvCand[curMVPIdx];
@@ -2717,20 +2722,21 @@ bool InterSearch::xRectHashInterEstimation(PredictionUnit& pu, RefPicList& bestR
             {
               bestMvd = cMv - currAMVPInfoQPel.mvCand[curMVPIdx];
             }
-          }
+          }   // Final do loop de iteração sobre a lista de hash de blocos correspondentes
         }
       }
     }
   }
+  // Liberação de memória alocada para os valores de hash
   delete[] hashValue1s;
   delete[] hashValue2s;
-  pu.cu->imv = imvBest;
-  if (bestMvd == Mv(0, 0))
+  pu.cu->imv = imvBest;         // Restauração da precisão do MV para a melhor configuração encontrada
+  if (bestMvd == Mv(0, 0))      // Verificação final se não houve movimento
   {
     pu.cu->imv = 0;
     return false;
   }
-  return (bestCost < MAX_INT);
+  return (bestCost < MAX_INT);  // Retorna true se o melhor custo é menor que o valor máximo permitido
 }
 //----------------------------------------------------------------
 bool InterSearch::xHashInterEstimation(PredictionUnit& pu, RefPicList& bestRefPicList, int& bestRefIndex, Mv& bestMv, Mv& bestMvd, int& bestMVPIndex, bool& isPerfectMatch)
@@ -2800,7 +2806,7 @@ bool InterSearch::xHashInterEstimation(PredictionUnit& pu, RefPicList& bestRefPi
         {
           continue;
         }
-
+  //----------------------------------------------------------------
         list<BlockHash> listBlockHash;
         selectMatchesInter(pu.cu->slice->getRefPic(eRefPicList, refIdx)->getHashMap()->getFirstIterator(hashValue1), count, listBlockHash, currBlockHash);
         m_numHashMVStoreds[eRefPicList][refIdx] = (int)listBlockHash.size();
@@ -3039,7 +3045,7 @@ bool InterSearch::xHashInterEstimation(PredictionUnit& pu, RefPicList& bestRefPi
   }
   return (bestCost < MAX_INT);
 }
-
+//----------------------------------------------------------------
 bool InterSearch::predInterHashSearch(CodingUnit& cu, Partitioner& partitioner, bool& isPerfectMatch)
 {
   Mv       bestMv, bestMvd;

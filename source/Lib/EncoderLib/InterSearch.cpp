@@ -226,7 +226,7 @@ void InterSearch::init(EncCfg *pcEncCfg, TrQuant *pcTrQuant, int searchRange, in
 {
   // Verifica se a classe já foi inicializada
   CHECK(m_isInitialized, "Already initialized");
-  //Limpa o cache de BVs (Binary Values)
+  //Limpa o cache de BVs (Block Vectors)
   m_defaultCachedBvs.clear();
   //Define os ponteiros e parâmetros da classe
   m_pcEncCfg                     = pcEncCfg;
@@ -1450,75 +1450,93 @@ void InterSearch::xIntraPatternSearch(PredictionUnit& pu, IntTZSearchStruct&  cS
           // Verificação de validade considerando GDR Clean
           if (isEncodeGdrClean)
           {
+            // Criação da posição (BvBR) no canto inferior direito da região de interesse (ROI)
             Position BvBR(cuPelX + roiWidth + x - 1, cuPelY + roiHeight + y - 1);
+            // Verifica se a região definida por BvBR na componente de luminância (LUMA) é "limpa" (clean)
             if (!cs.isClean(BvBR, CHANNEL_TYPE_LUMA))
             {
+              // Se não for uma região "limpa", continua para a próxima iteração
               continue;
             }
           }
 #endif
-
+          // Cálculo do custo usando a função de custo para múltiplas previsões
           sad = m_pcRdCost->getBvCostMultiplePreds(x, y, pu.cs->sps->getAMVREnabledFlag());
+          // Configuração do buffer de distância para a posição de referência atual
           m_cDistParam.cur.buf = piRefSrch + cStruct.iRefStride * y + x;
+          // Adição do custo calculado pela função de distância
           sad += m_cDistParam.distFunc(m_cDistParam);
-
+          
+          // Atualização da busca de candidatos IBC com base no custo atual
           xIBCSearchMVCandUpdate(sad, x, y, sadBestCand, cMVCand);
         }
       }
-
+      // Obtenção dos melhores candidatos e custo associado
       bestX = cMVCand[0].getHor();
       bestY = cMVCand[0].getVer();
       sadBest = sadBestCand[0];
+      // Verificação de condição para refinamento cromático
       if (sadBest - m_pcRdCost->getBvCostMultiplePreds(bestX, bestY, pu.cs->sps->getAMVREnabledFlag()) <= 16)
       {
-        //chroma refine
+        //chroma refine - Refinamento cromático da busca IBC
         bestCandIdx = xIBCSearchMVChromaRefine(pu, roiWidth, roiHeight, cuPelX, cuPelY, sadBestCand, cMVCand);
-
+        
+        // Atualização dos melhores candidatos e custo associado após o refinamento cromático
         bestX = cMVCand[bestCandIdx].getHor();
         bestY = cMVCand[bestCandIdx].getVer();
         sadBest = sadBestCand[bestCandIdx];
+        // Configuração do vetor de movimento final e custo final
         rcMv.set(bestX, bestY);
         ruiCost = sadBest;
-        goto end;
+        goto end;     // Finaliza a busca e refinamento
       }
 
-
+      // Iteração sobre posições específicas dentro da janela de pesquisa para candidatos IBC
       for (int y = (std::max(srchRngVerTop, -cuPelY) + 1); y <= srchRngVerBottom; y += 2)
       {
+        // Verificação de condições de borda vertical
         if ((y == 0) || ((int)(cuPelY + y + roiHeight) >= picHeight))
         {
+          // Se condições de borda forem atendidas, continua para a próxima iteração
           continue;
         }
 
         for (int x = std::max(srchRngHorLeft, -cuPelX); x <= srchRngHorRight; x += 2)
         {
+          // Verificação de condições de borda horizontal
           if ((x == 0) || ((int)(cuPelX + x + roiWidth) >= picWidth))
           {
+            // Se condições de borda forem atendidas, continua para a próxima iteração
             continue;
           }
-
+          // Verificação da existência de um candidato IBC válido na posição específica
           if (!searchBv(pu, cuPelX, cuPelY, roiWidth, roiHeight, picWidth, picHeight, x, y, lcuWidth))
           {
+            // Se não houver candidato IBC válido, continua para a próxima iteração
             continue;
           }
-
+// Verificação condicional específica para GDR (Gradient-Driven Restoration) ativado
 #if GDR_ENABLED
-          if (isEncodeGdrClean)
+          if (isEncodeGdrClean)    // Verificação adicional para "isEncodeGdrClean"
           {
+            // Cálculo da posição BvBR com base em offsets e dimensões
             Position BvBR(cuPelX + roiWidth + x - 1, cuPelY + roiHeight + y - 1);
+            // Verificação se a posição BvBR não está "clean" (não restaurada) no canal de luminância
             if (!cs.isClean(BvBR, CHANNEL_TYPE_LUMA))
             {
-              continue;
+              continue;           // Se não estiver "clean", continua para a próxima iteração
             }
           }
 #endif
-
+          // Cálculo do custo inicial para a posição (x, y) usando múltiplas previsões
           sad = m_pcRdCost->getBvCostMultiplePreds(x, y, pu.cs->sps->getAMVREnabledFlag());
+          // Atualização dos parâmetros de distorção para a posição (x, y)
           m_cDistParam.cur.buf = piRefSrch + cStruct.iRefStride * y + x;
           sad += m_cDistParam.distFunc(m_cDistParam);
 
-
+          // Chamada para a função de busca de candidatos IBC e atualização dos melhores candidatos
           xIBCSearchMVCandUpdate(sad, x, y, sadBestCand, cMVCand);
+          // Verificação se o melhor candidato tem um custo baixo o suficiente
           if (sadBestCand[0] <= 5)
           {
             //chroma refine & return
@@ -1528,15 +1546,15 @@ void InterSearch::xIntraPatternSearch(PredictionUnit& pu, IntTZSearchStruct&  cS
             sadBest = sadBestCand[bestCandIdx];
             rcMv.set(bestX, bestY);
             ruiCost = sadBest;
-            goto end;
+            goto end;           // Encerra a execução e vai para o rótulo 'end'
           }
         }
       }
-
+      // Atribuição dos resultados do primeiro candidato
       bestX = cMVCand[0].getHor();
       bestY = cMVCand[0].getVer();
       sadBest = sadBestCand[0];
-
+      // Verificação condicional para decidir se deve ocorrer o refinamento cromático
       if ((sadBest >= tempSadBest) || ((sadBest - m_pcRdCost->getBvCostMultiplePreds(bestX, bestY, pu.cs->sps->getAMVREnabledFlag())) <= 32))
       {
         //chroma refine
@@ -1546,93 +1564,113 @@ void InterSearch::xIntraPatternSearch(PredictionUnit& pu, IntTZSearchStruct&  cS
         sadBest = sadBestCand[bestCandIdx];
         rcMv.set(bestX, bestY);
         ruiCost = sadBest;
-        goto end;
+        goto end;           // Encerra a execução e vai para o rótulo 'end'
       }
-
+      // Atualização do valor temporário de melhor custo para comparações futuras
       tempSadBest = sadBestCand[0];
 
-
+      // Loop externo para a coordenada vertical 'y' com incremento de 2
       for (int y = (std::max(srchRngVerTop, -cuPelY) + 1); y <= srchRngVerBottom; y += 2)
       {
+        // Verifica se 'y' está na borda da imagem ou além da altura da imagem
         if ((y == 0) || ((int)(cuPelY + y + roiHeight) >= picHeight))
         {
-          continue;
+          continue;       // Ignora esta iteração se a condição for verdadeira
         }
-
+        // Loop interno para a coordenada horizontal 'x' com incremento de 2
         for (int x = (std::max(srchRngHorLeft, -cuPelX) + 1); x <= srchRngHorRight; x += 2)
         {
-
+          // Verifica se 'x' está na borda da imagem ou além da largura da imagem
           if ((x == 0) || ((int)(cuPelX + x + roiWidth) >= picWidth))
           {
-            continue;
+            continue;     // Ignora esta iteração se a condição for verdadeira
           }
-
+          // Verifica se a função searchBv retorna false
           if (!searchBv(pu, cuPelX, cuPelY, roiWidth, roiHeight, picWidth, picHeight, x, y, lcuWidth))
           {
-            continue;
+            continue;     // Ignora esta iteração se a função retornar false
           }
-#if GDR_ENABLED
+#if GDR_ENABLED          // Verificação condicional para GDR Clean (Gradiente-Driven Restoration)
           if (isEncodeGdrClean)
           {
+            // Calcula a posição BvBR
             Position BvBR(cuPelX + roiWidth + x - 1, cuPelY + roiHeight + y - 1);
+            // Verifica se a posição não é "limpa" (clean) para o canal Luma
             if (!cs.isClean(BvBR, CHANNEL_TYPE_LUMA))
             {
-              continue;
+              continue;   // Ignora esta iteração se a posição não for "limpa"
             }
           }
 #endif
-
+          // Cálculo do custo de bloco para predições múltiplas usando o objeto m_pcRdCost
           sad = m_pcRdCost->getBvCostMultiplePreds(x, y, pu.cs->sps->getAMVREnabledFlag());
+          // Inicialização do buffer de distorção para a posição atual
           m_cDistParam.cur.buf = piRefSrch + cStruct.iRefStride * y + x;
+          // Adição da distorção calculada pela função de distorção ao custo acumulado
           sad += m_cDistParam.distFunc(m_cDistParam);
 
-
+          // Atualização da lista de candidatos de movimento usando a função xIBCSearchMVCandUpdate
           xIBCSearchMVCandUpdate(sad, x, y, sadBestCand, cMVCand);
+          // Verificação condicional: Se o custo do melhor candidato (sadBestCand[0]) for menor ou igual a 5
           if (sadBestCand[0] <= 5)
           {
             //chroma refine & return
             bestCandIdx = xIBCSearchMVChromaRefine(pu, roiWidth, roiHeight, cuPelX, cuPelY, sadBestCand, cMVCand);
+            // Obtenção das coordenadas do melhor candidato refinado
             bestX = cMVCand[bestCandIdx].getHor();
             bestY = cMVCand[bestCandIdx].getVer();
+            // Atualização do custo do melhor candidato refinado
             sadBest = sadBestCand[bestCandIdx];
-            rcMv.set(bestX, bestY);
-            ruiCost = sadBest;
-            goto end;
+            rcMv.set(bestX, bestY);   // Configuração do vetor de movimento resultante
+            ruiCost = sadBest;        // Atribuição do custo ao resultado final
+            goto end;                 // Saída antecipada do bloco com a instrução 'goto'
           }
         }
       }
     }
   }
 //----------------------------------------------------------------
+  // Refinamento cromático usando a função xIBCSearchMVChromaRefine
   bestCandIdx = xIBCSearchMVChromaRefine(pu, roiWidth, roiHeight, cuPelX, cuPelY, sadBestCand, cMVCand);
-
+  
+  // Obtenção das coordenadas do melhor candidato refinado
   bestX = cMVCand[bestCandIdx].getHor();
   bestY = cMVCand[bestCandIdx].getVer();
+  // Atualização do custo do melhor candidato refinado
   sadBest = sadBestCand[bestCandIdx];
+  // Configuração do vetor de movimento resultante
   rcMv.set(bestX, bestY);
+  // Atribuição do custo ao resultado final
   ruiCost = sadBest;
-
+// Rótulo de fim para a instrução 'goto'
 end:
+  // Limpeza do buffers m_acBVs
   m_acBVs.clear();
+  // Fusão das listas de candidatos de movimento m_acBVs e m_defaultCachedBvs
   xMergeCandLists(m_acBVs, m_defaultCachedBvs);
-
+  // Limpeza do buffers m_defaultCachedBvs
   m_defaultCachedBvs.clear();
+  // Fusão das listas de candidatos de movimento m_defaultCachedBvs e cMVCand
   xMergeCandLists(m_defaultCachedBvs, cMVCand);
+  // Fusão das listas de candidatos de movimento m_defaultCachedBvs e m_acBVs
   xMergeCandLists(m_defaultCachedBvs, m_acBVs);
-
+  
+  // Atualização do registro de movimento (bvRecord) no bloco de codificação atual
   for (unsigned int cand = 0; cand < CHROMA_REFINEMENT_CANDIDATES; cand++)
   {
+    // Verifica se as coordenadas do candidato de movimento são (0, 0)
     if (cMVCand[cand].getHor() == 0 && cMVCand[cand].getVer() == 0)
     {
-      continue;
-    }
+      continue;    // Se sim, continua para o próximo candidato
+    }  
+    // Atualiza o registro de movimento bvRecord no bloco de codificação atual
     m_ctuRecord[pu.lumaPos()][pu.lumaSize()].bvRecord[cMVCand[cand]] = sadBestCand[cand];
   }
 
-  return;
+  return;         // Retorno da função
 }
 
-
+//----------------------------------------------------------------
 
 // based on xMotionEstimation
 void InterSearch::xIBCEstimation(PredictionUnit& pu, PelUnitBuf& origBuf,
@@ -1658,51 +1696,65 @@ void InterSearch::xIBCEstimation(PredictionUnit& pu, PelUnitBuf& origBuf,
 
 #if GDR_ENABLED
   CodingStructure &cs = *pu.cs;
+  // Verificação de GDR habilitado no SPS, encoder e limpeza do bloco
   const bool isEncodeGdrClean = cs.sps->getGDREnabledFlag() && cs.pcv->isEncoder && ((cs.picHeader->getInGdrInterval() && cs.isClean(pu.Y().topRight(), CHANNEL_TYPE_LUMA)) || (cs.picHeader->getNumVerVirtualBoundaries() == 0));
 #endif
 
+  /*
+    A área do componente temporal Y é clonada para tmpOrgLuma e processada pelo sinal RSP 
+    (Reshape Signal Processing) se a Luma Mapping Control Set estiver habilitada e o CTU 
+    (Coding Tree Unit) flag estiver definido.
+  */
   if ((pu.cs->slice->getLmcsEnabledFlag() && m_pcReshape->getCTUFlag()))
   {
-    const CompArea &area = pu.blocks[COMPONENT_Y];
+    const CompArea &area = pu.blocks[COMPONENT_Y];    // Área de componente temporal Y
     CompArea    tmpArea(COMPONENT_Y, area.chromaFormat, Position(0, 0), area.size());
     tmpOrgLuma = m_tmpStorageLCU.getBuf(tmpArea);
     tmpOrgLuma.copyFrom(tmpPattern);
     tmpOrgLuma.rspSignal(m_pcReshape->getFwdLUT());
-    pcPatternKey = (CPelBuf*)&tmpOrgLuma;
+    pcPatternKey = (CPelBuf*)&tmpOrgLuma; //pcPatternKey é um ponteiro para o padrão de busca usado na estimativa de movimento.
   }
-
-  m_lumaClpRng = pu.cs->slice->clpRng(COMPONENT_Y);
+  // Obtenção da faixa de clamping para o canal Y
+  m_lumaClpRng = pu.cs->slice->clpRng(COMPONENT_Y);   // Clm_lumaClpRng representa a faixa de clamping para o canal Y, que pode ser útil durante a estimativa de movimento.
+  // Obtém a imagem de referência do bloco de reconstrução atual
   Picture* refPic = pu.cu->slice->getPic();
+  // Obtém o buffer de reconstrução da imagem de referência
   const CPelBuf refBuf = refPic->getRecoBuf(pu.blocks[COMPONENT_Y]);
 
+  // Inicialização da estrutura de pesquisa IntTZSearchStruct (é uma estrutura que contém informações necessárias para a pesquisa de movimento. cStruct é uma instância dessa estrutura.)
   IntTZSearchStruct cStruct;
-  cStruct.pcPatternKey = pcPatternKey;
-  cStruct.iRefStride = refBuf.stride;
-  cStruct.piRefY = refBuf.buf;
-  CHECK(pu.cu->imv == IMV_HPEL, "IF_IBC");
-  cStruct.imvShift = pu.cu->imv << 1;
-  cStruct.subShiftMode = 0; // used by intra pattern search function
+  cStruct.pcPatternKey = pcPatternKey;      // Atribuição do padrão de busca
+  cStruct.iRefStride = refBuf.stride;       // Atribuição da largura da imagem de referência
+  cStruct.piRefY = refBuf.buf;              // Atribuição do ponteiro para o início do buffer da imagem de referência
+  CHECK(pu.cu->imv == IMV_HPEL, "IF_IBC");  // Verificação se o modo de vetor de movimento é HPEL (Half-Pixel)
+  cStruct.imvShift = pu.cu->imv << 1;       // Atribuição do deslocamento de vetor de movimento para o modo HPEL
+  cStruct.subShiftMode = 0;                 // used by intra pattern search function // Modo de deslocamento usado pela função de pesquisa de padrão intra
 
-  // disable weighted prediction
+  // disable weighted prediction (desativa a predição ponderada)
   setWpScalingDistParam(-1, REF_PIC_LIST_X, pu.cs->slice);
 
-  m_pcRdCost->getMotionCost(0);
-  m_pcRdCost->setPredictors(pcMvPred);
-  m_pcRdCost->setCostScale(0);
+  m_pcRdCost->getMotionCost(0);             // Obtém o custo de movimento para o modo de pesquisa de movimento (search mode) 0
+  m_pcRdCost->setPredictors(pcMvPred);      // Define os preditores de movimento
+  m_pcRdCost->setCostScale(0);              // Define a escala de custo como 0
 
-  m_cDistParam.useMR = false;
+  // Configuração dos parâmetros de distorção para a pesquisa de movimento
+  m_cDistParam.useMR = false;               // Desativa a pesquisa de modo rápido
   m_pcRdCost->setDistParam(m_cDistParam, *cStruct.pcPatternKey, cStruct.piRefY, cStruct.iRefStride, m_lumaClpRng.bd, COMPONENT_Y, cStruct.subShiftMode);
   bool buffered = false;
+  // Verifica se o método rápido de IBC usando buffer de vetores de movimento está habilitado
   if (m_pcEncCfg->getIBCFastMethod() & IBC_FAST_METHOD_BUFFERBV)
   {
-    ruiCost = MAX_UINT;
+    ruiCost = MAX_UINT;                   // Inicializa o custo com um valor alto
+    // Obtém o histórico de vetores de movimento para o bloco atual
     std::unordered_map<Mv, Distortion>& history = m_ctuRecord[pu.lumaPos()][pu.lumaSize()].bvRecord;
+    // Itera sobre os vetores de movimento armazenados no histórico
     for (std::unordered_map<Mv, Distortion>::iterator p = history.begin(); p != history.end(); p++)
     {
       const Mv& bv = p->first;
 
       int xBv = bv.hor;
       int yBv = bv.ver;
+// Verifica se o candidato é válido, considerando a limpeza GDR (se habilitada)
 #if GDR_ENABLED
       bool validCand = true;
       if (isEncodeGdrClean)
@@ -1710,15 +1762,19 @@ void InterSearch::xIBCEstimation(PredictionUnit& pu, PelUnitBuf& origBuf,
         Position BvBR(cuPelX + iRoiWidth + xBv - 1, cuPelY + iRoiHeight + yBv - 1);
         validCand = validCand && cs.isClean(BvBR, CHANNEL_TYPE_LUMA);
       }
+      // Verifica a validade do candidato e realiza a busca do vetor de movimento
       if (validCand && searchBv(pu, cuPelX, cuPelY, iRoiWidth, iRoiHeight, iPicWidth, iPicHeight, xBv, yBv, lcuWidth))
 #else
+      // Realiza a busca do vetor de movimento
       if (searchBv(pu, cuPelX, cuPelY, iRoiWidth, iRoiHeight, iPicWidth, iPicHeight, xBv, yBv, lcuWidth))
 #endif
       {
-        buffered = true;
+        buffered = true;                  // Indica que pelo menos um candidato válido foi encontrado no histórico
+        // Calcula a distorção para o vetor de movimento candidato
         Distortion sad = m_pcRdCost->getBvCostMultiplePreds(xBv, yBv, pu.cs->sps->getAMVREnabledFlag());
         m_cDistParam.cur.buf = cStruct.piRefY + cStruct.iRefStride * yBv + xBv;
         sad += m_cDistParam.distFunc(m_cDistParam);
+        // Atualiza o vetor de movimento e o custo se o candidato atual tiver menor custo
         if (sad < ruiCost)
         {
           rcMv = bv;
@@ -1726,11 +1782,11 @@ void InterSearch::xIBCEstimation(PredictionUnit& pu, PelUnitBuf& origBuf,
         }
         else if (sad == ruiCost)
         {
-          // stabilise the search through the unordered list
+          // stabilise the search through the unordered list (estabiliza a busca através da lista não ordenada)
           if (bv.hor < rcMv.getHor()
             || (bv.hor == rcMv.getHor() && bv.ver < rcMv.getVer()))
           {
-            // update the vector.
+            // update the vector. (atualiza o vetor de movimento)
             rcMv = bv;
           }
         }
@@ -1739,14 +1795,15 @@ void InterSearch::xIBCEstimation(PredictionUnit& pu, PelUnitBuf& origBuf,
 
     if (buffered)
     {
+      // Obtém predições de MVP (Motion Vector Predictor) para IBC (Intra Block Copy)
       static_vector<Mv, IBC_NUM_CANDIDATES> mvPredEncOnly;
       PU::getIbcMVPsEncOnly(pu, mvPredEncOnly);
-
+      // Itera sobre as predições de MVP
       for (const auto& cand : mvPredEncOnly)
       {
         int xPred = cand.getHor();
         int yPred = cand.getVer();
-
+//Verifica se o candidato é válido, considerando GDR clean (se habilitada)
 #if GDR_ENABLED
         bool validCand = true;
         if (isEncodeGdrClean)
@@ -1754,104 +1811,139 @@ void InterSearch::xIBCEstimation(PredictionUnit& pu, PelUnitBuf& origBuf,
           Position BvBR(cuPelX + iRoiWidth + xPred - 1, cuPelY + iRoiHeight + yPred - 1);
           validCand = cs.isClean(BvBR, CHANNEL_TYPE_LUMA);
         }
+        // Verifica a validade do candidato e realiza a busca do vetor de movimento
         if (validCand && searchBv(pu, cuPelX, cuPelY, iRoiWidth, iRoiHeight, iPicWidth, iPicHeight, xPred, yPred, lcuWidth))
 #else
+        // Realiza a busca do vetor de movimento
         if (searchBv(pu, cuPelX, cuPelY, iRoiWidth, iRoiHeight, iPicWidth, iPicHeight, xPred, yPred, lcuWidth))
 #endif
         {
+          // Calcula a distorção para o vetor de movimento candidato
           Distortion sad = m_pcRdCost->getBvCostMultiplePreds(xPred, yPred, pu.cs->sps->getAMVREnabledFlag());
           m_cDistParam.cur.buf = cStruct.piRefY + cStruct.iRefStride * yPred + xPred;
           sad += m_cDistParam.distFunc(m_cDistParam);
-          if (sad < ruiCost)
+          if (sad < ruiCost)             // Atualiza o vetor de movimento e o custo se o candidato atual tiver menor custo
           {
             rcMv.set(xPred, yPred);
             ruiCost = sad;
           }
           else if (sad == ruiCost)
           {
-            // stabilise the search through the unordered list
+            // stabilise the search through the unordered list (estabiliza a busca através da lista não ordenada)
             if (xPred < rcMv.getHor()
               || (xPred == rcMv.getHor() && yPred < rcMv.getVer()))
             {
-              // update the vector.
+              // update the vector. (atualiza o vetor de movimento)
               rcMv.set(xPred, yPred);
             }
           }
-
+          // Armazena a distorção no histórico
           m_ctuRecord[pu.lumaPos()][pu.lumaSize()].bvRecord[Mv(xPred, yPred)] = sad;
         }
       }
     }
   }
-
-  if (!buffered)
+  
+  if (!buffered)                      // Caso não haja candidatos válidos no histórico, realiza a busca de padrão intra
   {
     Mv        cMvSrchRngLT;
     Mv        cMvSrchRngRB;
 
-    // assume that intra BV is integer-pel precision
+    // assume that intra BV is integer-pel precision (assume que o BV intra é de precisão de pixel inteiro)
     xSetIntraSearchRange(pu, pu.lwidth(), pu.lheight(), localSearchRangeX, localSearchRangeY, cMvSrchRngLT, cMvSrchRngRB);
 
-    //  Do integer search
+    //  Do integer search (realiza a pesquisa de padrão intra)
     xIntraPatternSearch(pu, cStruct, rcMv, ruiCost, &cMvSrchRngLT, &cMvSrchRngRB, pcMvPred);
   }
 }
-
-// based on xSetSearchRange
+//----------------------------------------------------------------
+/*based on xSetSearchRange
+  Define a faixa de pesquisa intra para a unidade de predição dada, levando em consideração a topologia da codificação de blocos
+  na subárvore de codificação. A faixa é definida com base na posição do bloco de predição em relação às CTUs vizinhas e é ajustada para
+  considerar a sub-amostragem de MV nas subárvores de codificação. A faixa ajustada é armazenada em rcMvSrchRngLT e rcMvSrchRngRB.
+  Os parâmetros iRoiWidth e iRoiHeight especificam as dimensões da região de interesse. */
 void InterSearch::xSetIntraSearchRange(PredictionUnit& pu, int iRoiWidth, int iRoiHeight, const int localSearchRangeX, const int localSearchRangeY, Mv& rcMvSrchRngLT, Mv& rcMvSrchRngRB)
 {
   const SPS &sps = *pu.cs->sps;
 
   int srLeft, srRight, srTop, srBottom;
-
+  // Obtém a posição do bloco de luma
   const int cuPelX = pu.Y().x;
   const int cuPelY = pu.Y().y;
-
+  // Obtém a largura máxima de uma CTU
   const int lcuWidth = pu.cs->slice->getSPS()->getMaxCUWidth();
   const int ctuSizeLog2 = floorLog2(lcuWidth);
+  // Calcula o número de CTUs à esquerda
   int numLeftCTUs = (1 << ((7 - ctuSizeLog2) << 1)) - ((ctuSizeLog2 < 7) ? 1 : 0);
 
+  // Calcula as margens da faixa de pesquisa
   srLeft = -(numLeftCTUs * lcuWidth + (cuPelX % lcuWidth));
   srTop = -(cuPelY % lcuWidth);
 
   srRight = lcuWidth - (cuPelX % lcuWidth) - iRoiWidth;
   srBottom = lcuWidth - (cuPelY % lcuWidth) - iRoiHeight;
-
+  
+  // Armazena as margens ajustadas nos MVs de faixa de pesquisa
   rcMvSrchRngLT.setHor(srLeft);
   rcMvSrchRngLT.setVer(srTop);
   rcMvSrchRngRB.setHor(srRight);
   rcMvSrchRngRB.setVer(srBottom);
 
+  // Converte os MVs para uma precisão maior antes do ajuste e depois converte de volta
   rcMvSrchRngLT <<= 2;
   rcMvSrchRngRB <<= 2;
+  // Ativa temporariamente o recorte de MVs para a subárvore de codificação
   bool temp = m_clipMvInSubPic;
   m_clipMvInSubPic = true;
+  // Realiza o recorte dos MVs para a subárvore de codificação
   xClipMv(rcMvSrchRngLT, pu.cu->lumaPos(), pu.cu->lumaSize(), sps, *pu.cs->pps);
   xClipMv(rcMvSrchRngRB, pu.cu->lumaPos(), pu.cu->lumaSize(), sps, *pu.cs->pps);
+  // Restaura o estado anterior do recorte de MVs
   m_clipMvInSubPic = temp;
+  // Converte os MVs de volta para a precisão original
   rcMvSrchRngLT >>= 2;
   rcMvSrchRngRB >>= 2;
 }
-
+//----------------------------------------------------------------
+// Realiza a predição e busca de bloco intra usando um mecanismo de pesquisa para um bloco de codificação específico.
+// A função itera através das Partições de Unidade (PUs) na unidade de codificação dada, definindo as MVs de pesquisa
+// e predizendo os MVs resultantes usando o método IBC (Intra-Block Copy). A pesquisa considera uma faixa local definida
+// por localSearchRangeX e localSearchRangeY, e utiliza um mapa hash para acelerar a pesquisa IBC com base em MVs
+// anteriores. O processo é condicionalmente adaptado para o caso em que GDR (Gradiente-Driven Restoration) está habilitado,
+// garantindo que as MVs resultantes estejam de acordo com as restrições do GDR Clean.
+//
+// Parâmetros:
+//   - cu: A unidade de codificação (CU) contendo as informações sobre o bloco a ser pesquisado.
+//   - partitioner: O particionador associado à CU, definindo a partição espacial para a pesquisa.
+//   - localSearchRangeX: A extensão da faixa de pesquisa local no eixo horizontal.
+//   - localSearchRangeY: A extensão da faixa de pesquisa local no eixo vertical.
+//   - ibcHashMap: Um mapa hash que armazena informações relevantes para acelerar a pesquisa IBC com base em MVs anteriores.
+//
+// Retorno:
+//   - true se a predição e a pesquisa IBC foram bem-sucedidas, false caso contrário.
 bool InterSearch::predIBCSearch(CodingUnit& cu, Partitioner& partitioner, const int localSearchRangeX, const int localSearchRangeY, IbcHashMap& ibcHashMap)
 {
+  // MVs de pesquisa superior esquerda e inferior direita para a faixa local
   Mv           cMvSrchRngLT;
   Mv           cMvSrchRngRB;
-
+  // MVs de predição e MV atual
   Mv           cMv;
   Mv           cMvPred;
-
+  
+  // Itera sobre as Partições de Unidade (PUs) na unidade de codificação
   for (auto &pu : CU::traversePUs(cu))
   {
+    // Definindo o número máximo de componentes para predição
     m_maxCompIDToPred = MAX_NUM_COMPONENT;
-
+    
+    // Verifica se a PU está contida na mesma CU
     CHECK(pu.cu != &cu, "PU is contained in another CU");
-#if GDR_ENABLED
+#if GDR_ENABLED                   // Verifica se o GDR Clean está habilitado
     CodingStructure &cs = *pu.cs;
     const bool isEncodeGdrClean = cs.sps->getGDREnabledFlag() && cs.pcv->isEncoder && ((cs.picHeader->getInGdrInterval() && cs.isClean(pu.Y().topRight(), CHANNEL_TYPE_LUMA)) || (cs.picHeader->getNumVerVirtualBoundaries() == 0));
 #endif
-
-#if GDR_ENABLED
+    
+#if GDR_ENABLED                   // Inicializa algumas flags relacionadas ao GDR, se habilitado
     if (isEncodeGdrClean)
     {
       pu.mvSolid[0] = false;
@@ -1862,63 +1954,80 @@ bool InterSearch::predIBCSearch(CodingUnit& cu, Partitioner& partitioner, const 
 #endif
     //////////////////////////////////////////////////////////
     /// ibc search
-    pu.cu->imv = 2;
+    pu.cu->imv = 2;           /// Configura o modo de vetor de movimento interno (IMV) para 2
+    /// Preenche as informações de candidatos para o vetor de movimento de modo intra (AMVP) para uma resolução de 4 pel
     AMVPInfo amvpInfo4Pel;
     PU::fillIBCMvpCand(pu, amvpInfo4Pel);
-
-    pu.cu->imv = 0;// (Int)cu.cs->sps->getUseIMV(); // set as IMV=0 initially
-    Mv    cMv, cMvPred[2];
+    
+    /// Define o modo de vetor de movimento interno (IMV) de volta para 0, possivelmente indicando que agora está sendo considerado o modo normal (não IMV)
+    pu.cu->imv = 0;            // (Int)cu.cs->sps->getUseIMV(); // set as IMV=0 initially
+    Mv    cMv, cMvPred[2];    /// Inicializa vetores de movimento e estruturas relacionadas à busca de vetor de movimento intra
     AMVPInfo amvpInfo;
     PU::fillIBCMvpCand(pu, amvpInfo);
     // store in full pel accuracy, shift before use in search
+    /// Configura os candidatos de vetor de movimento intra e ajusta a precisão de precisão interna para inteira
     cMvPred[0] = amvpInfo.mvCand[0];
     cMvPred[0].changePrecision(MV_PRECISION_INTERNAL, MV_PRECISION_INT);
     cMvPred[1] = amvpInfo.mvCand[1];
     cMvPred[1].changePrecision(MV_PRECISION_INTERNAL, MV_PRECISION_INT);
-
+    
+    /// Inicializa variáveis relacionadas à busca de vetor de movimento intra
     int iBvpNum = 2;
     int bvpIdxBest = 0;
     cMv.setZero();
     Distortion cost = 0;
+    
+    /// Verifica o número máximo de candidatos de fusão para IBC e ajusta variáveis
     if (pu.cs->sps->getMaxNumIBCMergeCand() == 1)
     {
       iBvpNum = 1;
       cMvPred[1] = cMvPred[0];
     }
 
+    /// Se a busca de hash IBC estiver ativada, realiza a busca de hash para encontrar um candidato de vetor de movimento
     if (m_pcEncCfg->getIBCHashSearch())
     {
       xxIBCHashSearch(pu, cMvPred, iBvpNum, cMv, bvpIdxBest, ibcHashMap);
     }
 
+    /// Se o vetor de movimento resultante ainda for zero, realiza uma estimativa IBC usando a função xIBCEstimation
     if (cMv.getHor() == 0 && cMv.getVer() == 0)
     {
       // if hash search does not work or is not enabled
-      PelUnitBuf origBuf = pu.cs->getOrgBuf(pu);
-      xIBCEstimation(pu, origBuf, cMvPred, cMv, cost, localSearchRangeX, localSearchRangeY);
+      PelUnitBuf origBuf = pu.cs->getOrgBuf(pu);  /// Obtém o buffer original da PU
+      xIBCEstimation(pu, origBuf, cMvPred, cMv, cost, localSearchRangeX, localSearchRangeY);  /// Realiza a estimativa IBC
     }
 
+    /// Se o vetor de movimento resultante ainda for zero, retorna false
     if (cMv.getHor() == 0 && cMv.getVer() == 0)
     {
       return false;
     }
     /// ibc search
     /////////////////////////////////////////////////////////
+    // Variáveis para armazenar informações sobre os bits do vetor de movimento
     unsigned int bitsBVPBest, bitsBVPTemp;
+    // Inicializa a variável que armazenará o melhor número de bits com um valor máximo possível
     bitsBVPBest = MAX_INT;
+    // Configura a escala de custo para zero antes de iniciar a busca
     m_pcRdCost->setCostScale(0);
 
+    // Loop sobre os candidatos de vetor de movimento intra (BVPs)
     for (int bvpIdxTemp = 0; bvpIdxTemp<iBvpNum; bvpIdxTemp++)
     {
+      // Configura o preditor de custo para o candidato atual
       m_pcRdCost->setPredictor(cMvPred[bvpIdxTemp]);
-
+      
+      // Calcula o número de bits necessários para representar o vetor de movimento atual
       bitsBVPTemp = m_pcRdCost->getBitsOfVectorWithPredictor(cMv.getHor(), cMv.getVer(), 0);
-
+      
+      // Atualiza os melhores bits e índice de candidato, se necessário
       if (bitsBVPTemp < bitsBVPBest)
       {
         bitsBVPBest = bitsBVPTemp;
         bvpIdxBest = bvpIdxTemp;
 
+        // Configura o modo IMV (Integer Motion Vector) com base na comparação entre o vetor de movimento e o preditor
         if (cu.cs->sps->getAMVREnabledFlag() && cMv != cMvPred[bvpIdxTemp])
         {
           pu.cu->imv = 1; // set as full-pel
@@ -1928,41 +2037,48 @@ bool InterSearch::predIBCSearch(CodingUnit& cu, Partitioner& partitioner, const 
           pu.cu->imv = 0; // set as fractional-pel
         }
       }
-
+      // Inicializa a variável para armazenar os bits do vetor de movimento preditor quantizado para pontos quádruplos
       unsigned int bitsBVPQP = MAX_UINT;
 
 
       Mv mvPredQuadPel;
       if ((cMv.getHor() % 4 == 0) && (cMv.getVer() % 4 == 0) && (pu.cs->sps->getAMVREnabledFlag()))
       {
+        // Configura o preditor para o candidato com precisão de quatro pixels
         mvPredQuadPel = amvpInfo4Pel.mvCand[bvpIdxTemp];// cMvPred[bvpIdxTemp];
 
         mvPredQuadPel.changePrecision(MV_PRECISION_INTERNAL, MV_PRECISION_4PEL);
 
         m_pcRdCost->setPredictor(mvPredQuadPel);
 
+        // Calcula os bits necessários para representar o vetor de movimento com precisão de quatro pixels
         bitsBVPQP = m_pcRdCost->getBitsOfVectorWithPredictor(cMv.getHor() >> 2, cMv.getVer() >> 2, 0);
 
       }
+      // Converte novamente o preditor para precisão de inteiro para evitar efeitos colaterais
       mvPredQuadPel.changePrecision(MV_PRECISION_4PEL, MV_PRECISION_INT);
+      // Atualiza os melhores bits e índice de candidato, se necessário (para precisão de quatro pixels)
       if (bitsBVPQP < bitsBVPBest && cMv != mvPredQuadPel)
       {
         bitsBVPBest = bitsBVPQP;
         bvpIdxBest = bvpIdxTemp;
-
+        
+        // Configura o modo IMV para precisão de quatro pixels
         if (cu.cs->sps->getAMVREnabledFlag())
         {
           pu.cu->imv = 2; // set as quad-pel
         }
       }
     }
-
-    pu.bv = cMv; // bv is always at integer accuracy
+    
+    // Configura os vetores de movimento e outros parâmetros da PU com base nos resultados
+    pu.bv = cMv; // bv is always at integer accuracy (BV é sempre com precisão de inteiro)
     cMv.changePrecision(MV_PRECISION_INT, MV_PRECISION_INTERNAL);
-    pu.mv[REF_PIC_LIST_0] = cMv; // store in fractional pel accuracy
+    pu.mv[REF_PIC_LIST_0] = cMv; // store in fractional pel accuracy (armazena em precisão de pixel fracionário)
 
     pu.mvpIdx[REF_PIC_LIST_0] = bvpIdxBest;
 
+    // Calcula o vetor de movimento diferencial
     if(pu.cu->imv == 2 && cMv != amvpInfo4Pel.mvCand[bvpIdxBest])
     {
       pu.mvd[REF_PIC_LIST_0] = cMv - amvpInfo4Pel.mvCand[bvpIdxBest];
@@ -1971,41 +2087,45 @@ bool InterSearch::predIBCSearch(CodingUnit& cu, Partitioner& partitioner, const 
     {
       pu.mvd[REF_PIC_LIST_0] = cMv - amvpInfo.mvCand[bvpIdxBest];
     }
-
+    // Se o vetor de movimento diferencial for zero, redefine o modo IMV
     if (pu.mvd[REF_PIC_LIST_0] == Mv(0, 0))
     {
       pu.cu->imv = 0;
     }
+    // Verificações adicionais para o modo IMV = 2
     if (pu.cu->imv == 2)
     {
       assert((cMv.getHor() % 16 == 0) && (cMv.getVer() % 16 == 0));
     }
+    // Verificações adicionais se AMVR está habilitado
     if (cu.cs->sps->getAMVREnabledFlag())
     {
       assert(pu.cu->imv>0 || pu.mvd[REF_PIC_LIST_0] == Mv());
     }
-
+    // Define o índice de referência para a lista de referência 0
     pu.refIdx[REF_PIC_LIST_0] = MAX_NUM_REF;
 
   }
 
   return true;
 }
-
+//----------------------------------------------------------------
 void InterSearch::xxIBCHashSearch(PredictionUnit& pu, Mv* mvPred, int numMvPred, Mv &mv, int& idxMvPred, IbcHashMap& ibcHashMap)
 {
-  mv.setZero();
-  m_pcRdCost->setCostScale(0);
+  mv.setZero();                   // Zera o vetor de movimento resultante
+  m_pcRdCost->setCostScale(0);    // COnfigura a escala de custo como 0
 
-#if GDR_ENABLED
+#if GDR_ENABLED                   // Verifica se o GDR está habilitado
   CodingStructure &cs = *pu.cs;
   const bool isEncodeGdrClean = cs.sps->getGDREnabledFlag() && cs.pcv->isEncoder && ((cs.picHeader->getInGdrInterval() && cs.isClean(pu.Y().topRight(), CHANNEL_TYPE_LUMA)) || (cs.picHeader->getNumVerVirtualBoundaries() == 0));
 #endif
-  std::vector<Position> candPos;
+  std::vector<Position> candPos;  // Vetor de posições candidatas para a busca de IBC com hash
+  // Verifica se há correspondência de hash para as posições candidatas
   if (ibcHashMap.ibcHashMatch(pu.Y(), candPos, *pu.cs, m_pcEncCfg->getIBCHashSearchMaxCand(), m_pcEncCfg->getIBCHashSearchRange4SmallBlk()))
   {
-    unsigned int minCost = MAX_UINT;
+    unsigned int minCost = MAX_UINT;  // custo min inicial
 
+    // Parâmetros relacionados ao tamanho e posição do bloco de codificação
     const unsigned int  lcuWidth = pu.cs->slice->getSPS()->getMaxCUWidth();
     const int   cuPelX = pu.Y().x;
     const int   cuPelY = pu.Y().y;
@@ -2014,20 +2134,25 @@ void InterSearch::xxIBCHashSearch(PredictionUnit& pu, Mv* mvPred, int numMvPred,
     int         roiWidth = pu.lwidth();
     int         roiHeight = pu.lheight();
 
+    // Itera sobre as posições candidatas encontradas
     for (std::vector<Position>::iterator pos = candPos.begin(); pos != candPos.end(); pos++)
     {
+      // Calcula a posição do canto inferior direito da posição candidata
       Position bottomRight = pos->offset(pu.Y().width - 1, pu.Y().height - 1);
+      // Verifica se a posição candidata e seu canto inferior direito estão totalmente descompactados
       if (pu.cs->isDecomp(*pos, CHANNEL_TYPE_LUMA) && pu.cs->isDecomp(bottomRight, CHANNEL_TYPE_LUMA))
       {
+        // Calcula o vetor de movimento da posição candidata
         Position tmp = *pos - pu.Y().pos();
         Mv candMv;
         candMv.set(tmp.x, tmp.y);
 
+        // Verifica se o vetor de movimento é válido
         if (!searchBv(pu, cuPelX, cuPelY, roiWidth, roiHeight, picWidth, picHeight, candMv.getHor(), candMv.getVer(), lcuWidth))
         {
           continue;
         }
-#if GDR_ENABLED
+#if GDR_ENABLED      // Verifica se a posição candidata é GDR Clean, se o GDR estiver habilitado
         Position BvBR(cuPelX + roiWidth + candMv.getHor() - 1, cuPelY + roiHeight + candMv.getVer() - 1);
         if (isEncodeGdrClean && !cs.isClean(BvBR, CHANNEL_TYPE_LUMA))
         {
@@ -2035,12 +2160,15 @@ void InterSearch::xxIBCHashSearch(PredictionUnit& pu, Mv* mvPred, int numMvPred,
         }
 #endif
 
+        // Itera sobre os vetores de movimento preditores
         for (int n = 0; n < numMvPred; n++)
         {
-          m_pcRdCost->setPredictor(mvPred[n]);
-
+          m_pcRdCost->setPredictor(mvPred[n]);    // Configura o preditor de custo para o vetor de movimento preditor atual
+          
+          // Calcula o custo dos bits necessários para representar o vetor de movimento candidato com o preditor atual
           unsigned int cost = m_pcRdCost->getBitsOfVectorWithPredictor(candMv.getHor(), candMv.getVer(), 0);
-
+          
+          // Atualiza o vetor de movimento e índice do preditor se o custo for menor que o custo mínimo atual
           if (cost < minCost)
           {
             mv = candMv;
@@ -2048,9 +2176,11 @@ void InterSearch::xxIBCHashSearch(PredictionUnit& pu, Mv* mvPred, int numMvPred,
             minCost = cost;
           }
 
+          // Calcula o custo dos bits necessários para representar o vetor de movimento candidato com precisão de quatro pixels
           int costQuadPel = MAX_UINT;
           if ((candMv.getHor() % 4 == 0) && (candMv.getVer() % 4 == 0) && (pu.cs->sps->getAMVREnabledFlag()))
           {
+            // Configura o preditor para o candidato com precisão de quatro pixels
             Mv mvPredQuadPel;
             int imvShift = 2;
             int offset = 1 << (imvShift - 1);
@@ -2061,9 +2191,11 @@ void InterSearch::xxIBCHashSearch(PredictionUnit& pu, Mv* mvPred, int numMvPred,
 
             m_pcRdCost->setPredictor(mvPredQuadPel);
 
+            // Calcula o custo dos bits necessários para representar o vetor de movimento candidato com precisão de quatro pixels
             costQuadPel = m_pcRdCost->getBitsOfVectorWithPredictor(candMv.getHor() >> 2, candMv.getVer() >> 2, 0);
           }
 
+          // Atualiza o vetor de movimento e índice do preditor se o custo com precisão de quatro pixels for menor que o custo mínimo atual
           if (costQuadPel < minCost)
           {
             mv = candMv;
@@ -2077,52 +2209,62 @@ void InterSearch::xxIBCHashSearch(PredictionUnit& pu, Mv* mvPred, int numMvPred,
 
 }
 
-
+//----------------------------------------------------------------
+// Função para adicionar um novo par de valores (cost, blockHash) a duas listas ordenadas (listCost e listBlockHash)
 void InterSearch::addToSortList(std::list<BlockHash>& listBlockHash, std::list<int>& listCost, int cost, const BlockHash& blockHash)
 {
+  // Criar iteradores para percorrer as listas listBlockHash e listCost
   std::list<BlockHash>::iterator itBlockHash = listBlockHash.begin();
   std::list<int>::iterator itCost = listCost.begin();
 
+  // Percorrer a lista listCost
   while (itCost != listCost.end())
   {
-    if (cost < (*itCost))
+    if (cost < (*itCost))                                // Verificar se o novo valor cost é menor que o valor atual apontado por itCost
     {
-      listCost.insert(itCost, cost);
-      listBlockHash.insert(itBlockHash, blockHash);
-      return;
+      listCost.insert(itCost, cost);                     // Inserir o novo cost na lista listCost na posição apontada por itCost
+      listBlockHash.insert(itBlockHash, blockHash);      // Inserir a nova blockHash na lista listBlockHash na posição apontada por itBlockHash
+      return;                                            // Encerrar a função após a inserção bem-sucedida
     }
-
+    // Avançar os iteradores para o próximo elemento nas listas
     ++itCost;
     ++itBlockHash;
   }
-
+  // Se o loop terminar sem inserir o novo par de valores, adicionar no final das listas mantendo a ordenação
   listCost.push_back(cost);
   listBlockHash.push_back(blockHash);
 }
 
+// Função para selecionar os candidatos correspondentes na busca inter-predição
 void InterSearch::selectMatchesInter(const MapIterator& itBegin, int count, std::list<BlockHash>& listBlockHash, const BlockHash& currBlockHash)
 {
-  const int maxReturnNumber = 5;
-
+  const int maxReturnNumber = 5;        // Número máximo de candidatos a serem retornados
+  
+  // Limpar as listas de candidatos
   listBlockHash.clear();
   std::list<int> listCost;
   listCost.clear();
 
+  // Iterar sobre os candidatos na vizinhança
   MapIterator it = itBegin;
   for (int i = 0; i < count; i++, it++)
   {
+    // Verificar se os candidatos têm o mesmo valor de hash2
     if ((*it).hashValue2 != currBlockHash.hashValue2)
     {
       continue;
     }
 
+    // Calcular o custo atual com base nas diferenças x e y entre os blocos
     int currCost = RdCost::xGetExpGolombNumberOfBits((*it).x - currBlockHash.x) +
       RdCost::xGetExpGolombNumberOfBits((*it).y - currBlockHash.y);
 
+    // Se a lista não atingiu o limite máximo de candidatos, adicionar à lista mantendo a ordem
     if (listBlockHash.size() < maxReturnNumber)
     {
       addToSortList(listBlockHash, listCost, currCost, (*it));
     }
+    // Se a lista atingiu o limite, substituir o último candidato se o custo atual for menor
     else if (!listCost.empty() && currCost < listCost.back())
     {
       listCost.pop_back();
@@ -2133,23 +2275,25 @@ void InterSearch::selectMatchesInter(const MapIterator& itBegin, int count, std:
 }
 void InterSearch::selectRectangleMatchesInter(const MapIterator& itBegin, int count, std::list<BlockHash>& listBlockHash, const BlockHash& currBlockHash, int width, int height, int idxNonSimple, unsigned int* &hashValues, int baseNum, int picWidth, int picHeight, bool isHorizontal, uint16_t* curHashPic)
 {
-  const int maxReturnNumber = 5;
-  int baseSize = min(width, height);
-  unsigned int crcMask = 1 << 16;
+  const int maxReturnNumber = 5;            // Número máximo de candidatos a serem retornados
+  int baseSize = min(width, height);        // Tamanho do bloco base (mínimo entre largura e altura)
+  unsigned int crcMask = 1 << 16;           // Máscara para extrair bits significativos do valor de hash
   crcMask -= 1;
 
+  // Limpa as listas que armazenarão os resultados
   listBlockHash.clear();
   std::list<int> listCost;
   listCost.clear();
 
-  MapIterator it = itBegin;
+  MapIterator it = itBegin;                                 // Iterador para percorrer a tabela de hash
 
-  for (int i = 0; i < count; i++, it++)
+  for (int i = 0; i < count; i++, it++)                     // Itera sobre os candidatos
   {
-    if ((*it).hashValue2 != currBlockHash.hashValue2)
+    if ((*it).hashValue2 != currBlockHash.hashValue2)       // Verificar se os candidatos têm o mesmo valor de hash2
     {
-      continue;
+      continue;                                             // Passa para o próximo candidato se os valores de hash2 são diferentes
     }
+    // Posição do bloco referenciado ajustada pelo índice idxNonSimple
     int xRef = (*it).x;
     int yRef = (*it).y;
     if (isHorizontal)
@@ -2160,11 +2304,12 @@ void InterSearch::selectRectangleMatchesInter(const MapIterator& itBegin, int co
     {
       yRef -= idxNonSimple * baseSize;
     }
+    // Verifica se o bloco referenciado está dentro dos limites da imagem
     if (xRef < 0 || yRef < 0 || xRef + width >= picWidth || yRef + height >= picHeight)
     {
-      continue;
+      continue;                                           // Passa para o próximo candidato se estiver fora dos limites
     }
-    //check Other baseSize hash values
+    //check Other baseSize hash values (Verifica se os valores de hash para os blocos não simples correspondem)
     uint16_t* refHashValue = curHashPic + yRef * picWidth + xRef;
     bool isSame = true;
 
@@ -2177,23 +2322,27 @@ void InterSearch::selectRectangleMatchesInter(const MapIterator& itBegin, int co
       }
       refHashValue += (isHorizontal ? baseSize : (baseSize*picWidth));
     }
-    if (!isSame)
+    if (!isSame)                                          // Continua para o próximo candidato se os valores de hash para os blocos não simples não correspondem
     {
       continue;
     }
 
+    // Calcula o custo (diferença nas coordenadas) entre o bloco referenciado e o bloco atual
     int currCost = RdCost::xGetExpGolombNumberOfBits(xRef - currBlockHash.x) +
       RdCost::xGetExpGolombNumberOfBits(yRef - currBlockHash.y);
 
+    // Bloco de hash referenciado
     BlockHash refBlockHash;
     refBlockHash.hashValue2 = (*it).hashValue2;
     refBlockHash.x = xRef;
     refBlockHash.y = yRef;
 
+    // Se o tamanho da lista for menor que maxReturnNumber, adiciona o bloco atual à lista mantendo-a ordenada por custo
     if (listBlockHash.size() < maxReturnNumber)
     {
       addToSortList(listBlockHash, listCost, currCost, refBlockHash);
     }
+    // Se o tamanho da lista atingir maxReturnNumber, substitui o último elemento se o custo atual for menor
     else if (!listCost.empty() && currCost < listCost.back())
     {
       listCost.pop_back();
@@ -2203,14 +2352,17 @@ void InterSearch::selectRectangleMatchesInter(const MapIterator& itBegin, int co
   }
 }
 
+// Função para realizar a estimativa de correspondência usando hash
 bool InterSearch::xRectHashInterEstimation(PredictionUnit& pu, RefPicList& bestRefPicList, int& bestRefIndex, Mv& bestMv, Mv& bestMvd, int& bestMVPIndex, bool& isPerfectMatch)
 {
+  // Obtém as dimensões da área de previsão
   int width = pu.cu->lumaSize().width;
   int height = pu.cu->lumaSize().height;
-
+  // Calcula o tamanho da base para a busca por correspondência
   int baseSize = min(width, height);
   bool isHorizontal = true;;
   int baseNum = 0;
+  // Determina se a busca será feita na direção horizontal ou vertical
   if (height < width)
   {
     isHorizontal = true;
@@ -2221,28 +2373,37 @@ bool InterSearch::xRectHashInterEstimation(PredictionUnit& pu, RefPicList& bestR
     isHorizontal = false;
     baseNum = 1 << (floorLog2(height) - floorLog2(width));
   }
-
+  // Obtém as coordenadas da posição superior esquerda da unidade de previsão
   int xPos = pu.cu->lumaPos().x;
   int yPos = pu.cu->lumaPos().y;
+  
+  // Obtém o ponteiro para a área de pixels da unidade de previsão
   const int currStride = pu.cs->picture->getOrigBuf().get(COMPONENT_Y).stride;
   const Pel* curPel = pu.cs->picture->getOrigBuf().get(COMPONENT_Y).buf + yPos * currStride + xPos;
+  
+  // Obtém as dimensões da imagem
   int picWidth = pu.cu->slice->getPPS()->getPicWidthInLumaSamples();
   int picHeight = pu.cu->slice->getPPS()->getPicHeightInLumaSamples();
-
+  
+  // Inicializa as coordenadas da base
   int xBase = xPos;
   int yBase = yPos;
   const Pel* basePel = curPel;
   int idxNonSimple = -1;
+  // Arrays para armazenar os valores hash das bases
   unsigned int* hashValue1s = new unsigned int[baseNum];
   unsigned int* hashValue2s = new unsigned int[baseNum];
 
 #if GDR_ENABLED
+  // Verifica se a GDR está habilitada para configurações específicas
   CodingStructure &cs = *pu.cs;
   const bool isEncodeGdrClean = cs.sps->getGDREnabledFlag() && cs.pcv->isEncoder && ((cs.picHeader->getInGdrInterval() && cs.isClean(pu.Y().topRight(), CHANNEL_TYPE_LUMA)) || (cs.picHeader->getNumVerVirtualBoundaries() == 0));
 #endif
 
+  // Calcula os valores hash para cada base
   for (int k = 0; k < baseNum; k++)
   {
+    // Atualiza as coordenadas da base de acordo com a direção da busca
     if (isHorizontal)
     {
       xBase = xPos + k * baseSize;
@@ -2254,36 +2415,44 @@ bool InterSearch::xRectHashInterEstimation(PredictionUnit& pu, RefPicList& bestR
       basePel = curPel + k * baseSize * currStride;
     }
 
+    // Verifica se a base é considerada não simples
     if (idxNonSimple == -1 && !TComHash::isHorizontalPerfectLuma(basePel, currStride, baseSize, baseSize) && !TComHash::isVerticalPerfectLuma(basePel, currStride, baseSize, baseSize))
     {
       idxNonSimple = k;
     }
+    // Calcula os valores hash da base
     TComHash::getBlockHashValue((pu.cs->picture->getOrigBuf()), baseSize, baseSize, xBase, yBase, pu.cu->slice->getSPS()->getBitDepths(), hashValue1s[k], hashValue2s[k]);
   }
+  // Se não houver base não simples, define idxNonSimple como 0
   if (idxNonSimple == -1)
   {
     idxNonSimple = 0;
   }
+  
+  Distortion bestCost = UINT64_MAX;       // Variável para armazenar o melhor custo inicializada com o valor máximo possível
 
-  Distortion bestCost = UINT64_MAX;
-
+  // Estrutura para representar o hash da unidade de previsão atual
   BlockHash currBlockHash;
-  currBlockHash.x = xPos;//still use the first base block location
+  currBlockHash.x = xPos;                 //still use the first base block location (ainda usa a localização do primeiro bloco base)
   currBlockHash.y = yPos;
 
   currBlockHash.hashValue2 = hashValue2s[idxNonSimple];
 
+  // Configuração dos parâmetros de distorção para a unidade de predição
   m_pcRdCost->setDistParam(m_cDistParam, pu.cs->getOrgBuf(pu).Y(), 0, 0, m_lumaClpRng.bd, COMPONENT_Y, 0, 1, false);
 
-  int imvBest = 0;
-  int numPredDir = pu.cu->slice->isInterP() ? 1 : 2;
-  for (int refList = 0; refList < numPredDir; refList++)
+  int imvBest = 0;                                            // Inicialização do melhor valor de imv (Inter Mode Vector)
+  int numPredDir = pu.cu->slice->isInterP() ? 1 : 2;          // Número de direções de previsão (1 para P-frames, 2 para B-frames)
+  for (int refList = 0; refList < numPredDir; refList++)      // Loop sobre as listas de referência
   {
+    // Determina a lista de referência atual
     RefPicList eRefPicList = (refList == 0) ? REF_PIC_LIST_0 : REF_PIC_LIST_1;
+    // Número de índices de referência na lista atual
     int refPicNumber = pu.cu->slice->getNumRefIdx(eRefPicList);
 
-    for (int refIdx = 0; refIdx < refPicNumber; refIdx++)
+    for (int refIdx = 0; refIdx < refPicNumber; refIdx++)     // Loop sobre os índices de referência
     {
+      // Número de bits necessários para representar o índice de referência
       int bitsOnRefIdx = 1;
       if (refPicNumber > 1)
       {
@@ -2293,43 +2462,54 @@ bool InterSearch::xRectHashInterEstimation(PredictionUnit& pu, RefPicList& bestR
           bitsOnRefIdx--;
         }
       }
+      // Zera o número de candidatos armazenados para este índice de referência
       m_numHashMVStoreds[eRefPicList][refIdx] = 0;
-
+      
+      // Obtém as razões de escala para a referência atual
       const std::pair<int, int>& scaleRatio = pu.cu->slice->getScalingRatio( eRefPicList, refIdx );
+      // Se houver escala, continua para o próximo índice de referência
       if( scaleRatio != SCALE_1X )
       {
         continue;
       }
 
+      // Verifica se a tabela de hash foi inicializada para a referência atual
       CHECK( pu.cu->slice->getRefPic( eRefPicList, refIdx )->getHashMap() == nullptr, "Hash table is not initialized" );
 
+      // Condição para verificar a lista de referência e a direção de previsão
       if (refList == 0 || pu.cu->slice->getList1IdxToList0Idx(refIdx) < 0)
       {
+        // Conta o número de ocorrências do valor hash na tabela de hash
         int count = static_cast<int>(pu.cu->slice->getRefPic(eRefPicList, refIdx)->getHashMap()->count(hashValue1s[idxNonSimple]));
-        if (count == 0)
+        if (count == 0)                       // Se não houver ocorrências, continua para o próximo índice de referência
         {
           continue;
         }
 
-        list<BlockHash> listBlockHash;
+        list<BlockHash> listBlockHash;        // Lista para armazenar os candidatos de correspondência
+        // Seleciona os candidatos de correspondência na listaBlockHash
         selectRectangleMatchesInter(pu.cu->slice->getRefPic(eRefPicList, refIdx)->getHashMap()->getFirstIterator(hashValue1s[idxNonSimple]), count, listBlockHash, currBlockHash, width, height, idxNonSimple, hashValue2s, baseNum, picWidth, picHeight, isHorizontal, pu.cu->slice->getRefPic(eRefPicList, refIdx)->getHashMap()->getHashPic(baseSize));
 
+        // Atualiza o número de candidatos armazenados para a referência atual e índice de referência
         m_numHashMVStoreds[eRefPicList][refIdx] = int(listBlockHash.size());
+        // Se a lista de candidatos estiver vazia, continua para o próximo índice de referência
         if (listBlockHash.empty())
         {
           continue;
         }
+        // Informações sobre os candidatos a serem usadas nas etapas de predição
         AMVPInfo currAMVPInfoPel;
         AMVPInfo currAMVPInfo4Pel;
         AMVPInfo currAMVPInfoQPel;
 
-#if GDR_ENABLED
+#if GDR_ENABLED         // Condição específica para o GDR (Gradient-Driven Restoration)
         if (isEncodeGdrClean)
         {
           currAMVPInfoPel.allCandSolidInAbove = true;
           currAMVPInfo4Pel.allCandSolidInAbove = true;
           currAMVPInfoQPel.allCandSolidInAbove = true;
 
+          // Define todos os candidatos como sólidos e válidos na etapa de cima
           for (int i = 0; i < AMVP_MAX_NUM_CANDS_MEM; i++)
           {
             currAMVPInfoPel.mvSolid[i] = true;
@@ -2341,13 +2521,15 @@ bool InterSearch::xRectHashInterEstimation(PredictionUnit& pu, RefPicList& bestR
           }
         }
 #endif
-
-        pu.cu->imv = 2;
+//----------------------------------------------------------------
+        // Configuração dos candidatos de previsão de movimento com diferentes níveis de precisão
+        pu.cu->imv = 2; // Configura a precisão do MV para quatro pixels
         PU::fillMvpCand(pu, eRefPicList, refIdx, currAMVPInfo4Pel);
-        pu.cu->imv = 1;
+        pu.cu->imv = 1; // Configura a precisão do MV para um pixel
         PU::fillMvpCand(pu, eRefPicList, refIdx, currAMVPInfoPel);
-        pu.cu->imv = 0;
+        pu.cu->imv = 0; // Configura a precisão do MV para um quarto de pixel
         PU::fillMvpCand(pu, eRefPicList, refIdx, currAMVPInfoQPel);
+        // Ajusta a precisão dos candidatos para um quarto de pixel
         for (int mvpIdxTemp = 0; mvpIdxTemp < 2; mvpIdxTemp++)
         {
           currAMVPInfoQPel.mvCand[mvpIdxTemp].changePrecision(MV_PRECISION_INTERNAL, MV_PRECISION_QUARTER);
@@ -2355,7 +2537,9 @@ bool InterSearch::xRectHashInterEstimation(PredictionUnit& pu, RefPicList& bestR
           currAMVPInfo4Pel.mvCand[mvpIdxTemp].changePrecision(MV_PRECISION_INTERNAL, MV_PRECISION_QUARTER);
         }
 
+        // Verifica se a imagem de referência possui wrap-around habilitado
         bool wrap = pu.cu->slice->getRefPic(eRefPicList, refIdx)->isWrapAroundEnabled( pu.cs->pps );
+        // Configuração dos parâmetros de distorção e lambda
         const Pel* refBufStart = pu.cu->slice->getRefPic(eRefPicList, refIdx)->getRecoBuf(wrap).get(COMPONENT_Y).buf;
         const int refStride = pu.cu->slice->getRefPic(eRefPicList, refIdx)->getRecoBuf(wrap).get(COMPONENT_Y).stride;
         m_cDistParam.cur.stride = refStride;
@@ -2363,17 +2547,20 @@ bool InterSearch::xRectHashInterEstimation(PredictionUnit& pu, RefPicList& bestR
         m_pcRdCost->selectMotionLambda( );
         m_pcRdCost->setCostScale(0);
 
+        // Iteração sobre a lista de hash de blocos correspondentes
         list<BlockHash>::iterator it;
         int countMV = 0;
         for (it = listBlockHash.begin(); it != listBlockHash.end(); ++it)
         {
           int curMVPIdx = 0;
           unsigned int curMVPbits = MAX_UINT;
+          // Calcula o vetor de movimento entre o bloco atual e o bloco de referência
           Mv cMv((*it).x - currBlockHash.x, (*it).y - currBlockHash.y);
           m_hashMVStoreds[eRefPicList][refIdx][countMV++] = cMv;
+          // Ajusta a precisão do MV para um quarto de pixel
           cMv.changePrecision(MV_PRECISION_INT, MV_PRECISION_QUARTER);
 
-#if GDR_ENABLED
+#if GDR_ENABLED                       // Verifica se o bloco é válido no contexto do GDR
           bool allOk = true;
           bool anyCandOk = false;
           bool Valid = true;
@@ -2392,11 +2579,14 @@ bool InterSearch::xRectHashInterEstimation(PredictionUnit& pu, RefPicList& bestR
             continue;
           }
 #endif
+          // Iteração sobre os candidatos de previsão de movimento
           for (int mvpIdxTemp = 0; mvpIdxTemp < 2; mvpIdxTemp++)
           {
+            // Configura o MV predito com base no candidato atual
             Mv cMvPredPel = currAMVPInfoQPel.mvCand[mvpIdxTemp];
             m_pcRdCost->setPredictor(cMvPredPel);
 
+            // Calcula o número de bits necessários para representar o MV
             unsigned int tempMVPbits = m_pcRdCost->getBitsOfVectorWithPredictor(cMv.getHor(), cMv.getVer(), 0);
 
 #if GDR_ENABLED
@@ -2417,11 +2607,13 @@ bool InterSearch::xRectHashInterEstimation(PredictionUnit& pu, RefPicList& bestR
             {
               curMVPbits = tempMVPbits;
               curMVPIdx = mvpIdxTemp;
-              pu.cu->imv = 0;
+              pu.cu->imv = 0;            // Seleciona a precisão do MV
             }
 
+            // Verifica se o AMVR está habilitado no SPS
             if (pu.cu->slice->getSPS()->getAMVREnabledFlag())
             {
+              // Calcula o número de bits necessários para representar o MV com precisão de 1 pixel
               unsigned int bitsMVP1Pel = MAX_UINT;
               Mv mvPred1Pel = currAMVPInfoPel.mvCand[mvpIdxTemp];
               m_pcRdCost->setPredictor(mvPred1Pel);
@@ -2447,9 +2639,10 @@ bool InterSearch::xRectHashInterEstimation(PredictionUnit& pu, RefPicList& bestR
               {
                 curMVPbits = bitsMVP1Pel;
                 curMVPIdx = mvpIdxTemp;
-                pu.cu->imv = 1;
+                pu.cu->imv = 1;         // Seleciona a precisão do MV
               }
 
+              // Se o MV for múltiplo de 16, calcula o número de bits para a precisão de 4 pixels
               if ((cMv.getHor() % 16 == 0) && (cMv.getVer() % 16 == 0))
               {
                 unsigned int bitsMVP4Pel = MAX_UINT;
@@ -2477,7 +2670,7 @@ bool InterSearch::xRectHashInterEstimation(PredictionUnit& pu, RefPicList& bestR
                 {
                   curMVPbits = bitsMVP4Pel;
                   curMVPIdx = mvpIdxTemp;
-                  pu.cu->imv = 2;
+                  pu.cu->imv = 2;         // Seleciona a precisão do MV
                 }
               }
             }
@@ -2489,7 +2682,7 @@ bool InterSearch::xRectHashInterEstimation(PredictionUnit& pu, RefPicList& bestR
             continue;
           }
 #endif
-
+//----------------------------------------------------------------
           curMVPbits += bitsOnRefIdx;
 
           m_cDistParam.cur.buf = refBufStart + (*it).y*refStride + (*it).x;
@@ -2539,7 +2732,7 @@ bool InterSearch::xRectHashInterEstimation(PredictionUnit& pu, RefPicList& bestR
   }
   return (bestCost < MAX_INT);
 }
-
+//----------------------------------------------------------------
 bool InterSearch::xHashInterEstimation(PredictionUnit& pu, RefPicList& bestRefPicList, int& bestRefIndex, Mv& bestMv, Mv& bestMvd, int& bestMVPIndex, bool& isPerfectMatch)
 {
   int width = pu.cu->lumaSize().width;

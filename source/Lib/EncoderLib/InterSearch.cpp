@@ -2739,40 +2739,52 @@ bool InterSearch::xRectHashInterEstimation(PredictionUnit& pu, RefPicList& bestR
   return (bestCost < MAX_INT);  // Retorna true se o melhor custo é menor que o valor máximo permitido
 }
 //----------------------------------------------------------------
+/*
+    xHashInterEstimation é responsável por realizar a estimativa de movimento para um bloco de predição em codificação de vídeo. Ela utiliza a técnica de pesquisa por hash para 
+    identificar regiões semelhantes na referência e escolher o melhor vetor de movimento para o bloco atual. A função considera diferentes precisões de movimento (0, 1/4 e 1 pixel) 
+    e realiza cálculos de custo para selecionar a melhor combinação. As variáveis e parâmetros utilizados incluem informações sobre os blocos de predição, referências, custos, entre outros.
+*/
 bool InterSearch::xHashInterEstimation(PredictionUnit& pu, RefPicList& bestRefPicList, int& bestRefIndex, Mv& bestMv, Mv& bestMvd, int& bestMVPIndex, bool& isPerfectMatch)
 {
+  // Obtenção das dimensões do bloco de luma
   int width = pu.cu->lumaSize().width;
   int height = pu.cu->lumaSize().height;
-  if (width != height)
+  if (width != height)      // Verifica se o bloco não é quadrado, chamando uma outra função específica
   {
     return xRectHashInterEstimation(pu, bestRefPicList, bestRefIndex, bestMv, bestMvd, bestMVPIndex, isPerfectMatch);
   }
+  // Obtenção das coordenadas do bloco de luma
   int xPos = pu.cu->lumaPos().x;
   int yPos = pu.cu->lumaPos().y;
 
+  // Variáveis para armazenar os valores de hash
   uint32_t hashValue1;
   uint32_t hashValue2;
-  Distortion bestCost = UINT64_MAX;
+  Distortion bestCost = UINT64_MAX;     // Inicialização do custo inicial
 
+  // Geração dos valores de hash para o bloco
   if (!TComHash::getBlockHashValue((pu.cs->picture->getOrigBuf()), width, height, xPos, yPos, pu.cu->slice->getSPS()->getBitDepths(), hashValue1, hashValue2))
   {
-    return false;
+    return false; // Retorna falso se a geração do hash falhar
   }
 
-#if GDR_ENABLED
+#if GDR_ENABLED //Verificação em caso do GDR habilitado
   CodingStructure &cs = *pu.cs;
   const bool isEncodeGdrClean = cs.sps->getGDREnabledFlag() && cs.pcv->isEncoder && ((cs.picHeader->getInGdrInterval() && cs.isClean(pu.Y().topRight(), CHANNEL_TYPE_LUMA)) || (cs.picHeader->getNumVerVirtualBoundaries() == 0));
 #endif
+  // Estrutura para armazenar informações sobre o bloco atual
   BlockHash currBlockHash;
   currBlockHash.x = xPos;
   currBlockHash.y = yPos;
   currBlockHash.hashValue2 = hashValue2;
-
+  
+  // Configuração dos parâmetros de distorção para o cálculo do custo
   m_pcRdCost->setDistParam(m_cDistParam, pu.cs->getOrgBuf(pu).Y(), 0, 0, m_lumaClpRng.bd, COMPONENT_Y, 0, 1, false);
 
-  int imvBest = 0;
+  int imvBest = 0;      // Inicialização da melhor opção para Inter Mode Vector (IMV)
 
-  int numPredDir = pu.cu->slice->isInterP() ? 1 : 2;
+  int numPredDir = pu.cu->slice->isInterP() ? 1 : 2;      // Número de direções de predição (0 para P, 1 para B)
+  // Iteração sobre as listas de referência e índices de referência
   for (int refList = 0; refList < numPredDir; refList++)
   {
     RefPicList eRefPicList = (refList == 0) ? REF_PIC_LIST_0 : REF_PIC_LIST_1;
@@ -2790,33 +2802,41 @@ bool InterSearch::xHashInterEstimation(PredictionUnit& pu, RefPicList& bestRefPi
         }
       }
       m_numHashMVStoreds[eRefPicList][refIdx] = 0;
-
+      
+      // Obtenção da razão de escala entre as referências
       const std::pair<int, int>& scaleRatio = pu.cu->slice->getScalingRatio( eRefPicList, refIdx );
-      if( scaleRatio != SCALE_1X )
+      if( scaleRatio != SCALE_1X )      // Verificação se a razão de escala não é 1x, pulando a iteração
       {
         continue;
       }
 
+      // Verificação se a tabela de hash está inicializada
       CHECK( pu.cu->slice->getRefPic( eRefPicList, refIdx )->getHashMap() == nullptr, "Hash table is not initialized" );
 
       if (refList == 0 || pu.cu->slice->getList1IdxToList0Idx(refIdx) < 0)
       {
+        // Contagem do número de candidatos na tabela de hash
         int count = static_cast<int>(pu.cu->slice->getRefPic(eRefPicList, refIdx)->getHashMap()->count(hashValue1));
         if (count == 0)
         {
-          continue;
+          continue; // Se não há candidatos, pular para a próxima iteração
         }
   //----------------------------------------------------------------
+        // Lista para armazenar informações sobre blocos com hash correspondente
         list<BlockHash> listBlockHash;
+        // Seleção de correspondências para o bloco atual
         selectMatchesInter(pu.cu->slice->getRefPic(eRefPicList, refIdx)->getHashMap()->getFirstIterator(hashValue1), count, listBlockHash, currBlockHash);
+        // Armazenamento do número de candidatos encontrados na tabela de hash
         m_numHashMVStoreds[eRefPicList][refIdx] = (int)listBlockHash.size();
+        // Verificação se não há candidatos, pulando para a próxima iteração
         if (listBlockHash.empty())
         {
           continue;
         }
+        // Estruturas para armazenar informações sobre candidatos de MV
         AMVPInfo currAMVPInfoPel;
         AMVPInfo currAMVPInfo4Pel;
-#if GDR_ENABLED
+#if GDR_ENABLED                 // Configuração de flags de solidez dos candidatos para o caso de GDR habilitado
         if (isEncodeGdrClean)
         {
           currAMVPInfo4Pel.allCandSolidInAbove = true;
@@ -2827,10 +2847,11 @@ bool InterSearch::xHashInterEstimation(PredictionUnit& pu, RefPicList& bestRefPi
           }
         }
 #endif
+        // Configuração do modo de interpolação de movimento (IMV) e preenchimento de candidatos de MV
         pu.cu->imv = 2;
         PU::fillMvpCand(pu, eRefPicList, refIdx, currAMVPInfo4Pel);
 
-#if GDR_ENABLED
+#if GDR_ENABLED               // Configuração de flags de solidez dos candidatos para o caso de GDR habilitado
         if (isEncodeGdrClean)
         {
           currAMVPInfoPel.allCandSolidInAbove = true;
@@ -2841,10 +2862,11 @@ bool InterSearch::xHashInterEstimation(PredictionUnit& pu, RefPicList& bestRefPi
           }
         }
 #endif
+        // Configuração do modo de interpolação de movimento (IMV) e preenchimento de candidatos de MV
         pu.cu->imv = 1;
         PU::fillMvpCand(pu, eRefPicList, refIdx, currAMVPInfoPel);
         AMVPInfo currAMVPInfoQPel;
-#if GDR_ENABLED
+#if GDR_ENABLED                // Configuração de flags de solidez dos candidatos para o caso de GDR habilitado
         if (isEncodeGdrClean)
         {
           currAMVPInfoQPel.allCandSolidInAbove = true;
@@ -2855,9 +2877,12 @@ bool InterSearch::xHashInterEstimation(PredictionUnit& pu, RefPicList& bestRefPi
           }
         }
 #endif
+        // Configuração do modo de interpolação de movimento (IMV) e preenchimento de candidatos de MV
         pu.cu->imv = 0;
         PU::fillMvpCand(pu, eRefPicList, refIdx, currAMVPInfoQPel);
+        // Verificação se o número de candidatos é válido (deve ser maior que 1)
         CHECK(currAMVPInfoPel.numCand <= 1, "Wrong")
+        // Ajuste de precisão dos candidatos de MV para MV_PRECISION_QUARTER
         for (int mvpIdxTemp = 0; mvpIdxTemp < 2; mvpIdxTemp++)
         {
           currAMVPInfoQPel.mvCand[mvpIdxTemp].changePrecision(MV_PRECISION_INTERNAL, MV_PRECISION_QUARTER);
@@ -2865,57 +2890,77 @@ bool InterSearch::xHashInterEstimation(PredictionUnit& pu, RefPicList& bestRefPi
           currAMVPInfo4Pel.mvCand[mvpIdxTemp].changePrecision(MV_PRECISION_INTERNAL, MV_PRECISION_QUARTER);
         }
 
+        // Verificação se a sobreposição de pixels (wrap) está habilitada
         bool wrap = pu.cu->slice->getRefPic(eRefPicList, refIdx)->isWrapAroundEnabled( pu.cs->pps );
+        // Obtenção do início do buffer de referência
         const Pel* refBufStart = pu.cu->slice->getRefPic(eRefPicList, refIdx)->getRecoBuf(wrap).get(COMPONENT_Y).buf;
         const int refStride = pu.cu->slice->getRefPic(eRefPicList, refIdx)->getRecoBuf(wrap).get(COMPONENT_Y).stride;
 
+        // Configuração dos parâmetros de distorção
         m_cDistParam.cur.stride = refStride;
 
+        // Seleção da lambda para cálculo do custo e ajuste da escala de custo
         m_pcRdCost->selectMotionLambda( );
         m_pcRdCost->setCostScale(0);
 
+        // Iteração sobre a lista de blocos com hash correspondente
         list<BlockHash>::iterator it;
         int countMV = 0;
         for (it = listBlockHash.begin(); it != listBlockHash.end(); ++it)
         {
+          // Inicialização de índices e bits para o candidato de MV atual
           int curMVPIdx = 0;
           unsigned int curMVPbits = MAX_UINT;
+          // Cálculo do vetor de movimento (MV) do candidato atual
           Mv cMv((*it).x - currBlockHash.x, (*it).y - currBlockHash.y);
+          // Armazenamento do MV calculado
           m_hashMVStoreds[eRefPicList][refIdx][countMV++] = cMv;
+          // Ajuste de precisão do MV
           cMv.changePrecision(MV_PRECISION_INT, MV_PRECISION_QUARTER);
-
+//------------------------------------------------------------------------------
 #if GDR_ENABLED
+          // Verifica se o vetor de movimento (MV) é válido (usado para a limpeza em GDR)
           bool Valid = true;
-          bool allOk = true;
-          bool anyCandOk = false;
+          bool allOk = true;        // Variável para verificar se todas as condições estão OK
+          bool anyCandOk = false;   // Verifica se alguma das candidatas é válida
 
+          // Verifica se é necessário limpar em GDR
           if (isEncodeGdrClean)
           {
+            // Converte o MV para MV_PRECISION_INTERNAL
             Mv cMv16 = cMv;
             cMv16.changePrecision(MV_PRECISION_QUARTER, MV_PRECISION_INTERNAL);
+            // Obtém a posição inferior direita da unidade de predição atual
             const Position bottomRight = pu.Y().bottomRight();
+            // Verifica se a região é limpa
             Valid = cs.isClean(bottomRight, cMv16, eRefPicList, refIdx);
           }
 #endif
 
 #if GDR_ENABLED
+          // Se o vetor de movimento não for válido, pula para a próxima iteração
           if (!Valid)
           {
             continue;
           }
 #endif
 
+          // Loop sobre as candidatos de MV
           for (int mvpIdxTemp = 0; mvpIdxTemp < 2; mvpIdxTemp++)
           {
+            // Obtém o MV predito
             Mv cMvPredPel = currAMVPInfoQPel.mvCand[mvpIdxTemp];
             m_pcRdCost->setPredictor(cMvPredPel);
 
+            // Calcula o número de bits para o MV atual
             unsigned int tempMVPbits = m_pcRdCost->getBitsOfVectorWithPredictor(cMv.getHor(), cMv.getVer(), 0);
 
 #if GDR_ENABLED
+            // Verifica se o MV atual é melhor que o MV anterior
             allOk = (tempMVPbits < curMVPbits);
             if (isEncodeGdrClean)
             {
+              // Verifica se o MV é sólido (usado para a limpeza em GDR)
               bool isSolid = currAMVPInfoQPel.mvSolid[mvpIdxTemp];
               allOk = allOk && isSolid;
               if (allOk) anyCandOk = true;
@@ -2923,26 +2968,30 @@ bool InterSearch::xHashInterEstimation(PredictionUnit& pu, RefPicList& bestRefPi
 #endif
 
 #if GDR_ENABLED
-            if (allOk)
+            if (allOk)                      // Se o MV atual for melhor que o MV anterior
 #else
-            if (tempMVPbits < curMVPbits)
+            if (tempMVPbits < curMVPbits)   // Se o MV atual for melhor que o MV anterior
 #endif
             {
-              curMVPbits = tempMVPbits;
-              curMVPIdx = mvpIdxTemp;
-              pu.cu->imv = 0;
+              curMVPbits = tempMVPbits;     // Atualiza os bits do MV
+              curMVPIdx = mvpIdxTemp;       // Atualiza o índice do MV candidato
+              pu.cu->imv = 0;               // Define a precisão do MV para 0
             }
 
+            // Se a AMVR estiver habilitada
             if (pu.cu->slice->getSPS()->getAMVREnabledFlag())
             {
+              // Calcula os bits para MV com precisão de 1/4 de pixel
               unsigned int bitsMVP1Pel = MAX_UINT;
               Mv mvPred1Pel = currAMVPInfoPel.mvCand[mvpIdxTemp];
               m_pcRdCost->setPredictor(mvPred1Pel);
               bitsMVP1Pel = m_pcRdCost->getBitsOfVectorWithPredictor(cMv.getHor(), cMv.getVer(), 2);
 #if GDR_ENABLED
+              // Verifica se o MV com precisão de 1/4 de pixel é melhor que o MV anterior
               allOk = (bitsMVP1Pel < curMVPbits);
               if (isEncodeGdrClean)
               {
+                // Verifica se o MV é sólido (usado para a limpeza em GDR)
                 bool isSolid = currAMVPInfoPel.mvSolid[mvpIdxTemp];
                 allOk = allOk && isSolid;
                 if (allOk) anyCandOk = true;
@@ -2950,27 +2999,33 @@ bool InterSearch::xHashInterEstimation(PredictionUnit& pu, RefPicList& bestRefPi
 #endif
 
 #if GDR_ENABLED
+              // Se o MV atual for melhor que o MV anterior
               if (allOk)
 #else
+              // Se o MV atual for melhor que o MV anterior
               if (bitsMVP1Pel < curMVPbits)
 #endif
               {
-                curMVPbits = bitsMVP1Pel;
-                curMVPIdx = mvpIdxTemp;
-                pu.cu->imv = 1;
+                curMVPbits = bitsMVP1Pel;   // Atualiza os bits do MV
+                curMVPIdx = mvpIdxTemp;     // Atualiza o índice do MV candidato
+                pu.cu->imv = 1;             // Define a precisão do MV para 1/4 de pixel
               }
 
+              // Se o MV for um múltiplo de 16 na horizontal e vertical
               if ((cMv.getHor() % 16 == 0) && (cMv.getVer() % 16 == 0))
               {
+                // Calcula os bits para MV com precisão de 1 pixel
                 unsigned int bitsMVP4Pel = MAX_UINT;
                 Mv mvPred4Pel = currAMVPInfo4Pel.mvCand[mvpIdxTemp];
                 m_pcRdCost->setPredictor(mvPred4Pel);
                 bitsMVP4Pel = m_pcRdCost->getBitsOfVectorWithPredictor(cMv.getHor(), cMv.getVer(), 4);
 
 #if GDR_ENABLED
+                // Atualiza os bits da MV
                 allOk = (bitsMVP4Pel < curMVPbits);
                 if (isEncodeGdrClean)
                 {
+                  // Verifica se a MV é sólida (usado para a limpeza em GDR)
                   bool isSolid = currAMVPInfo4Pel.mvSolid[mvpIdxTemp];
                   allOk = allOk && isSolid;
                   if (allOk) anyCandOk = true;
@@ -2978,48 +3033,56 @@ bool InterSearch::xHashInterEstimation(PredictionUnit& pu, RefPicList& bestRefPi
 #endif
 
 #if GDR_ENABLED
-                if (allOk)
+                if (allOk)                         // Se a MV atual for melhor que a MV anterior
 #else
-                if (bitsMVP4Pel < curMVPbits)
+                if (bitsMVP4Pel < curMVPbits)      // Se a MV atual for melhor que a MV anterior
 #endif
                 {
-                  curMVPbits = bitsMVP4Pel;
-                  curMVPIdx = mvpIdxTemp;
-                  pu.cu->imv = 2;
+                  curMVPbits = bitsMVP4Pel;       // Atualiza os bits da MV
+                  curMVPIdx = mvpIdxTemp;         // Atualiza o índice da MV candidata
+                  pu.cu->imv = 2;                 // Define a precisão do MV para 1 pixel
                 }
               }
             }
           }
 
 #if GDR_ENABLED
+          // Se for uma codificação GDR e nenhuma MV candidata for válida, pula para a próxima iteração
           if (isEncodeGdrClean && !anyCandOk)
           {
             continue;
           }
 #endif
-
+//----------------------------------------------------------------
+          // Atualiza os bits considerando a quantidade de bits do índice de referência
           curMVPbits += bitsOnRefIdx;
-
+          
+          // Atualiza os parâmetros de distorção para a posição atual
           m_cDistParam.cur.buf = refBufStart + (*it).y*refStride + (*it).x;
+          // Calcula a Soma Absoluta das Diferenças (SAD) para a posição atual
           Distortion currSad = m_cDistParam.distFunc(m_cDistParam);
+          // Calcula o custo total considerando os bits da MV
           Distortion currCost = currSad + m_pcRdCost->getCost(curMVPbits);
 
-          if (!isPerfectMatch)
+          if (!isPerfectMatch)    // Verifica se é uma correspondência perfeita
           {
+            // Verifica se o QP da referência atual é menor ou igual ao QP da unidade de predição
             if (pu.cu->slice->getRefPic(eRefPicList, refIdx)->slices[0]->getSliceQp() <= pu.cu->slice->getSliceQp())
             {
               isPerfectMatch = true;
             }
           }
 
-          if (currCost < bestCost)
+          if (currCost < bestCost)  // Se o custo atual for menor que o melhor custo até agora
           {
+            // Atualiza as informações da melhor correspondência
             bestCost = currCost;
             bestRefPicList = eRefPicList;
             bestRefIndex = refIdx;
             bestMv = cMv;
             bestMVPIndex = curMVPIdx;
             imvBest = pu.cu->imv;
+            // Calcula o vetor de diferença de movimento (MVD) para a melhor MV
             if (pu.cu->imv == 2)
             {
               bestMvd = cMv - currAMVPInfo4Pel.mvCand[curMVPIdx];
@@ -3037,24 +3100,32 @@ bool InterSearch::xHashInterEstimation(PredictionUnit& pu, RefPicList& bestRefPi
       }
     }
   }
+  // Define a precisão da MV para a melhor precisão encontrada
   pu.cu->imv = imvBest;
+  // Se o vetor de diferença de movimento (MVD) for zero, define a precisão da MV para 0 e retorna falso
   if (bestMvd == Mv(0, 0))
   {
     pu.cu->imv = 0;
     return false;
   }
-  return (bestCost < MAX_INT);
+  return (bestCost < MAX_INT);  // Retorna verdadeiro se o melhor custo for menor que o valor máximo de inteiro
 }
 //----------------------------------------------------------------
+/*
+    predInterHashSearch é parte do processo de predição de blocos inter, utilizando a técnica de hash para acelerar a pesquisa do melhor vetor de movimento. 
+    A função atualiza as informações na PU com os resultados da pesquisa e realiza a compensação de movimento para gerar o bloco de predição.
+*/
 bool InterSearch::predInterHashSearch(CodingUnit& cu, Partitioner& partitioner, bool& isPerfectMatch)
 {
+  // Variáveis para armazenar os melhores resultados da pesquisa
   Mv       bestMv, bestMvd;
   RefPicList   bestRefPicList;
   int          bestRefIndex;
   int          bestMVPIndex;
 
-  auto &pu = *cu.firstPU;
+  auto &pu = *cu.firstPU;                 // Obtenção da Partição Atual (PU) da Coding Unit (CU)
 
+  // Zera as informações de MV, MV delta, referência, MVP (Índice e Número) para ambas as listas de referência
   Mv cMvZero;
   pu.mv[REF_PIC_LIST_0] = Mv();
   pu.mv[REF_PIC_LIST_1] = Mv();
@@ -3067,8 +3138,10 @@ bool InterSearch::predInterHashSearch(CodingUnit& cu, Partitioner& partitioner, 
   pu.mvpNum[REF_PIC_LIST_0] = NOT_VALID;
   pu.mvpNum[REF_PIC_LIST_1] = NOT_VALID;
 
+  // Chama a função de pesquisa por hash para estimar o melhor MV e outros parâmetros
   if (xHashInterEstimation(pu, bestRefPicList, bestRefIndex, bestMv, bestMvd, bestMVPIndex, isPerfectMatch))
   {
+    // Atualiza as informações na PU com os resultados da pesquisa
     pu.interDir = static_cast<int>(bestRefPicList) + 1;
     pu.mv[bestRefPicList] = bestMv;
     pu.mv[bestRefPicList].changePrecision(MV_PRECISION_QUARTER, MV_PRECISION_INTERNAL);
@@ -3080,16 +3153,18 @@ bool InterSearch::predInterHashSearch(CodingUnit& cu, Partitioner& partitioner, 
 
     pu.mvpNum[bestRefPicList] = 2;
 
+    // Atualiza as informações de movimento na PU
     PU::spanMotionInfo(pu);
+    // Realiza a compensação de movimento para gerar o bloco de predição
     PelUnitBuf predBuf = pu.cs->getPredBuf(pu);
     motionCompensation(pu, predBuf, REF_PIC_LIST_X);
-    return true;
+    return true;                // Indica que a pesquisa foi bem-sucedida
   }
 
-  return false;
+  return false;                 // Indica que a pesquisa não foi bem-sucedida
 }
 
-
+//----------------------------------------------------------------
 //! search of the best candidate for inter prediction
 void InterSearch::predInterSearch(CodingUnit& cu, Partitioner& partitioner)
 {

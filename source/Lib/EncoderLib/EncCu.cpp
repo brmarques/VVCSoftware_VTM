@@ -469,12 +469,13 @@ void EncCu::compressCtu( CodingStructure& cs, const UnitArea& area, const unsign
 // ====================================================================================================================
 // Protected member functions
 // ====================================================================================================================
-
+// Função para calcular a transformada Hadamard de 8x8 de uma matriz de pixels
 static int xCalcHADs8x8_ISlice(const Pel *piOrg, const int strideOrg)
 {
   int k, i, j, jj;
   int diff[64], m1[8][8], m2[8][8], m3[8][8], iSumHad = 0;
-
+  
+  // Copiar as diferenças entre pixels consecutivos em uma matriz chamada diff
   for (k = 0; k < 64; k += 8)
   {
     diff[k + 0] = piOrg[0];
@@ -489,7 +490,7 @@ static int xCalcHADs8x8_ISlice(const Pel *piOrg, const int strideOrg)
     piOrg += strideOrg;
   }
 
-  //horizontal
+  //horizontal    // Transformação horizontal (1D Hadamard) nas linhas da matriz diff
   for (j = 0; j < 8; j++)
   {
     jj = j << 3;
@@ -521,7 +522,7 @@ static int xCalcHADs8x8_ISlice(const Pel *piOrg, const int strideOrg)
     m2[j][7] = m1[j][6] - m1[j][7];
   }
 
-  //vertical
+  //vertical     // Transformação vertical (1D Hadamard) nas colunas da matriz m2
   for (i = 0; i < 8; i++)
   {
     m3[0][i] = m2[0][i] + m2[4][i];
@@ -552,6 +553,7 @@ static int xCalcHADs8x8_ISlice(const Pel *piOrg, const int strideOrg)
     m2[7][i] = m1[6][i] - m1[7][i];
   }
 
+  // Calcular a soma das diferenças absolutas dos elementos da matriz m2
   for (i = 0; i < 8; i++)
   {
     for (j = 0; j < 8; j++)
@@ -559,11 +561,12 @@ static int xCalcHADs8x8_ISlice(const Pel *piOrg, const int strideOrg)
       iSumHad += abs(m2[i][j]);
     }
   }
-  iSumHad -= abs(m2[0][0]);
-  iSumHad = (iSumHad + 2) >> 2;
-  return(iSumHad);
+  iSumHad -= abs(m2[0][0]);         // Subtrair o valor absoluto do elemento na posição (0,0)
+  iSumHad = (iSumHad + 2) >> 2;     // Média aritmética para reduzir a medida de distorção
+  return(iSumHad);                  // Retornar a medida de distorção resultante
 }
 
+// Função para atualizar os dados do bloco de codificação para uma fatia I (Intra) em uma unidade de transformação de codificação (CTU)
 int  EncCu::updateCtuDataISlice(const CPelBuf buf)
 {
   int  xBl, yBl;
@@ -572,59 +575,85 @@ int  EncCu::updateCtuDataISlice(const CPelBuf buf)
   int  iStrideOrig = buf.stride;
 
   int iSumHad = 0;
+  // Loop pelos blocos de 8x8 na imagem
   for( yBl = 0; ( yBl + iBlkSize ) <= buf.height; yBl += iBlkSize )
   {
     for( xBl = 0; ( xBl + iBlkSize ) <= buf.width; xBl += iBlkSize )
     {
+      // Obter ponteiro para o início do bloco 8x8
       const Pel* pOrg = pOrgInit + iStrideOrig*yBl + xBl;
+      // Calcular a medida de distorção Hadamard para o bloco 8x8 e adicionar ao total
       iSumHad += xCalcHADs8x8_ISlice( pOrg, iStrideOrig );
     }
   }
+  // Retornar a soma total das medidas de distorção Hadamard para a CTU
   return( iSumHad );
 }
 
+/**
+     * Verifica e atualiza o melhor modo de codificação.
+     * @param tempCS      A CodingStructure temporária gerada durante o teste do modo de codificação.
+     * @param bestCS      A CodingStructure que armazena o melhor resultado até agora.
+     * @param partitioner O particionador utilizado na codificação.
+     * @param encTestMode O modo de teste de codificação atual.
+     * @return True se o melhor CS foi atualizado, false caso contrário.
+*/
 bool EncCu::xCheckBestMode( CodingStructure *&tempCS, CodingStructure *&bestCS, Partitioner &partitioner, const EncTestMode& encTestMode )
 {
   bool bestCSUpdated = false;
 
+  // Verifica se a CodingStructure temporária não está vazia
   if( !tempCS->cus.empty() )
   {
+    // Verifica se há apenas uma CodingUnit na CodingStructure temporária
     if( tempCS->cus.size() == 1 )
     {
       const CodingUnit& cu = *tempCS->cus.front();
       CHECK( cu.skip && !cu.firstPU->mergeFlag, "Skip flag without a merge flag is not allowed!" );
     }
-
+    // Imprime informações de depuração sobre o melhor modo
 #if WCG_EXT
     DTRACE_BEST_MODE( tempCS, bestCS, m_pcRdCost->getLambda( true ) );
 #else
     DTRACE_BEST_MODE( tempCS, bestCS, m_pcRdCost->getLambda() );
 #endif
-
+    // Verifica se o resultado do modo de codificação deve ser usado
     if( m_modeCtrl->useModeResult( encTestMode, tempCS, partitioner ) )
     {
+      // Troca as CodingStructures, armazenando a temporária como a melhor
       std::swap( tempCS, bestCS );
-      // store temp best CI for next CU coding
+      // store temp best CI for next CU coding (Armazena o contexto CI temporário para a próxima codificação CU)
       m_CurrCtx->best = m_CABACEstimator->getCtx();
       m_bestModeUpdated = true;
       bestCSUpdated = true;
     }
   }
 
-  // reset context states
+  // reset context states (Reseta os estados do contexto)
   m_CABACEstimator->getCtx() = m_CurrCtx->start;
   return bestCSUpdated;
 }
-
+//----------------------------------------------------------------
+/**
+   * Comprime uma CodingUnit (CU) durante o processo de codificação.
+   * @param tempCS          A CodingStructure temporária para a CU.
+   * @param bestCS          A CodingStructure que armazena o melhor resultado até agora.
+   * @param partitioner     O particionador utilizado na codificação.
+   * @param maxCostAllowed  O custo máximo permitido para a codificação da CU.
+ */
 void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Partitioner& partitioner, double maxCostAllowed )
 {
+  // Verifica se o valor de maxCostAllowed é válido
   CHECK(maxCostAllowed < 0, "Wrong value of maxCostAllowed!");
 
   uint32_t compBegin;
   uint32_t numComp;
   bool jointPLT = false;
+  
+  // Verifica se a árvore é separada
   if (partitioner.isSepTree( *tempCS ))
   {
+    // Verifica se não é uma árvore dupla e o tipo de árvore não é D
     if( !CS::isDualITree(*tempCS) && partitioner.treeType != TREE_D )
     {
       compBegin = COMPONENT_Y;
@@ -633,6 +662,7 @@ void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Par
     }
     else
     {
+      // Verifica se é a componente de luminância
       if (isLuma(partitioner.chType))
       {
         compBegin = COMPONENT_Y;
@@ -640,6 +670,7 @@ void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Par
       }
       else
       {
+        // Se não for luminância, é a componente de crominância azul
         compBegin = COMPONENT_Cb;
         numComp   = 2;
       }
@@ -647,15 +678,27 @@ void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Par
   }
   else
   {
+    // Se a árvore não for separada, é a componente de luminância
     compBegin = COMPONENT_Y;
     numComp = (tempCS->area.chromaFormat != CHROMA_400) ? 3 : 1;
     jointPLT = true;
   }
+  //----------------------------------------------------------------
+  /**
+   * Configuração inicial para a codificação de uma CodingUnit (CU).
+   * @param splitmode        Modo de divisão da CU.
+   * @param bestLastPLTSize  Tamanhos das paletas anteriores no melhor resultado até agora.
+   * @param bestLastPLT      Paletas anteriores no melhor resultado até agora.
+   * @param curLastPLTSize   Tamanhos das paletas anteriores no resultado atual.
+   * @param curLastPLT       Paletas anteriores no resultado atual.
+  */
   SplitSeries splitmode = -1;
   uint8_t   bestLastPLTSize[MAX_NUM_CHANNEL_TYPE];
-  Pel       bestLastPLT[MAX_NUM_COMPONENT][MAXPLTPREDSIZE]; // store LastPLT for
+  Pel       bestLastPLT[MAX_NUM_COMPONENT][MAXPLTPREDSIZE]; // store LastPLT for (Armazena LastPLT para o melhor resultado até agora)
   uint8_t   curLastPLTSize[MAX_NUM_CHANNEL_TYPE];
-  Pel       curLastPLT[MAX_NUM_COMPONENT][MAXPLTPREDSIZE]; // store LastPLT if no partition
+  Pel       curLastPLT[MAX_NUM_COMPONENT][MAXPLTPREDSIZE]; // store LastPLT if no partition (Armazena LastPLT se não houver partição)
+  
+  // Inicializa os tamanhos das paletas anteriores
   for (int i = compBegin; i < (compBegin + numComp); i++)
   {
     ComponentID comID = jointPLT ? (ComponentID)compBegin : ((i > 0) ? COMPONENT_Cb : COMPONENT_Y);
@@ -677,32 +720,38 @@ void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Par
 
   tempCS->splitRdCostBest = nullptr;
   m_modeCtrl->initCULevel( partitioner, *tempCS );
+// Verifica se o GDR está habilitado
 #if GDR_ENABLED
   if (m_pcEncCfg->getGdrEnabled())
   {
     bool isInGdrInterval = slice.getPicHeader()->getInGdrInterval();
 
-    // 1.0 applicable to inter picture only
+    // 1.0 applicable to inter picture only (Verifica se o GDR é aplicável apenas a imagens inter)
     if (isInGdrInterval)
     {
+      // Obtém os parâmetros relacionados ao GDR
       int gdrPocStart = m_pcEncCfg->getGdrPocStart();
       int gdrInterval = m_pcEncCfg->getGdrInterval();
       int gdrPeriod = m_pcEncCfg->getGdrPeriod();
-
+      
+      // Obtém a largura da imagem em amostras de luminância
       int picWidth = slice.getPPS()->getPicWidthInLumaSamples();
       int m1, m2, n1;
 
+      // Obtém o POC (Contador de Ordem de Apresentação) atual da imagem
       int curPoc = slice.getPOC();
       int gdrPoc = (curPoc - gdrPocStart) % gdrPeriod;
 
       int begGdrX = 0;
       int endGdrX = 0;
 
+      // Calcula valores relacionados ao GDR
       double dd = (picWidth / (double)gdrInterval);
       int mm = (int)((picWidth / (double)gdrInterval) + 0.49999);
       m1 = ((mm + 7) >> 3) << 3;
       m2 = ((mm + 0) >> 3) << 3;
 
+      // Ajusta m1 se necessário
       if (dd > mm && m1 == m2)
       {
         m1 = m1 + 8;
@@ -710,6 +759,7 @@ void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Par
 
       n1 = (picWidth - m2 * gdrInterval) / 8;
 
+      // Determina a região de início e fim do GDR
       if (gdrPoc < n1)
       {
         begGdrX = m1 * gdrPoc;
@@ -719,41 +769,51 @@ void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Par
       {
         begGdrX = m1 * n1 + m2 * (gdrPoc - n1);
         endGdrX = begGdrX + m2;
+        // Garante que o fim não ultrapasse a largura da imagem
         if (picWidth <= endGdrX)
         {
           begGdrX = picWidth;
           endGdrX = picWidth;
         }
       }
-
+//----------------------------------------------------------------
+/**
+  * Verificação da área de atualização gradual (GDR) e aplicação de restrições de modos de codificação.
+*/
       bool isInRefreshArea = tempCS->withinRefresh(begGdrX, endGdrX);
 
+      // Força o modo intra se a CU estiver na área de atualização gradual (GDR)
       if (isInRefreshArea)
       {
         m_modeCtrl->forceIntraMode();
       }
       else if (tempCS->containRefresh(begGdrX, endGdrX) || tempCS->overlapRefresh(begGdrX, endGdrX))
       {
-        // 1.3.1 enable only vertical splits (QT, BT_V, TT_V)
+        // Se a CU intersecta ou contém a área de atualização gradual (GDR)
+        // 1.3.1 enable only vertical splits (QT, BT_V, TT_V) - (1.3.1 Habilita apenas divisões verticais (QT, BT_V, TT_V))
         m_modeCtrl->forceVerSplitOnly();
 
-        // 1.3.2 remove TT_V if it does not satisfy the condition
+        // 1.3.2 remove TT_V if it does not satisfy the condition (1.3.2 Remove TT_V se não satisfizer a condição)
         if (tempCS->refreshCrossTTV(begGdrX, endGdrX))
         {
           m_modeCtrl->forceRemoveTTV();
         }
       }
 
+      // Restrições adicionais de modos de codificação
       if (tempCS->area.lwidth() != tempCS->area.lheight())
       {
+        // Remove QT se a CU não for quadrada
         m_modeCtrl->forceRemoveQT();
       }
 
       if (!m_modeCtrl->anyPredModeLeft())
       {
+        // Remove DontSplit se não houver modos de predição restantes
         m_modeCtrl->forceRemoveDontSplit();
       }
-
+      
+      // Finaliza o nível de CU
       if (isInRefreshArea && !m_modeCtrl->anyIntraIBCMode() && (tempCS->area.lwidth() == 4 || tempCS->area.lheight() == 4))
       {
         m_modeCtrl->finishCULevel(partitioner);
@@ -762,7 +822,10 @@ void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Par
     }
   }
 #endif
-
+//----------------------------------------------------------------
+/**
+  * Verificar se é necessário redefinir as informações do SBT (Save & Load Bit Tool).
+ */
   if (partitioner.currQtDepth == 0 && partitioner.currMtDepth == 0 && !tempCS->slice->isIntra()
       && (sps.getUseSBT() || sps.getExplicitMtsInterEnabled()))
   {
@@ -770,10 +833,11 @@ void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Par
     int maxSLSize = sps.getUseSBT() ? tempCS->slice->getSPS()->getMaxTbSize() : MTS_INTER_MAX_CU_SIZE;
     slsSbt->resetSaveloadSbt( maxSLSize );
   }
+  // Reinicializar custos de SBT
   m_sbtCostSave[0] = m_sbtCostSave[1] = MAX_DOUBLE;
-
+  // Inicializar contexto CABAC
   m_CurrCtx->start = m_CABACEstimator->getCtx();
-
+  // Verificar se a QP cromática é ajustada
   if( slice.getUseChromaQpAdj() )
   {
     // TODO M0133 : double check encoder decisions with respect to chroma QG detection and actual encode
@@ -788,32 +852,31 @@ void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Par
   {
     m_cuChromaQpOffsetIdxPlus1 = 0;
   }
-
+  // Verificar se há modos de codificação disponíveis
   if( !m_modeCtrl->anyMode() )
   {
+    // Finalizar nível de CU
     m_modeCtrl->finishCULevel( partitioner );
     return;
   }
-
+//----------------------------------------------------------------
+  // Atualizar informações de rastreamento
   DTRACE_UPDATE( g_trace_ctx, std::make_pair( "cux", uiLPelX ) );
   DTRACE_UPDATE( g_trace_ctx, std::make_pair( "cuy", uiTPelY ) );
   DTRACE_UPDATE( g_trace_ctx, std::make_pair( "cuw", tempCS->area.lwidth() ) );
   DTRACE_UPDATE( g_trace_ctx, std::make_pair( "cuh", tempCS->area.lheight() ) );
   DTRACE( g_trace_ctx, D_COMMON, "@(%4d,%4d) [%2dx%2d]\n", tempCS->area.lx(), tempCS->area.ly(), tempCS->area.lwidth(), tempCS->area.lheight() );
 
-
-  m_pcInterSearch->resetSavedAffineMotion();
-
-  double bestIntPelCost = MAX_DOUBLE;
-
-  if (tempCS->slice->getSPS()->getUseColorTrans())
+  m_pcInterSearch->resetSavedAffineMotion();         // Resetar informações de movimento affine salvas
+  double bestIntPelCost = MAX_DOUBLE;                // Inicializar o melhor custo de interpolação de pixels inteiros
+  if (tempCS->slice->getSPS()->getUseColorTrans())   // Verificar se o espaço de cores está habilitado e definir custos iniciais
   {
     tempCS->tmpColorSpaceCost = MAX_DOUBLE;
     bestCS->tmpColorSpaceCost = MAX_DOUBLE;
     tempCS->firstColorSpaceSelected = true;
     bestCS->firstColorSpaceSelected = true;
   }
-
+  // Verificar espaço de cores e teste de cores
   if (tempCS->slice->getSPS()->getUseColorTrans() && !CS::isDualITree(*tempCS))
   {
     tempCS->firstColorSpaceTestOnly = false;
@@ -828,25 +891,29 @@ void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Par
       tempCS->firstColorSpaceTestOnly = bestCS->firstColorSpaceTestOnly = true;
     }
   }
-
+  // Inicializar custos para a divisão do bloco
   double splitRdCostBest[NUM_PART_SPLIT];
   std::fill(std::begin(splitRdCostBest), std::end(splitRdCostBest), MAX_DOUBLE);
+  // Verificar a Codificação de Diferença de Quantidade de Fase (LDC)
   if (tempCS->slice->getCheckLDC())
   {
     m_bestBcwCost[0] = m_bestBcwCost[1] = std::numeric_limits<double>::max();
     m_bestBcwIdx[0] = m_bestBcwIdx[1] = -1;
   }
-  do
+  do  // Loop principal de teste de modos
   {
+    // Atualizar informações do bloco anteriormente comprimido
     for (int i = compBegin; i < (compBegin + numComp); i++)
     {
       ComponentID comID = jointPLT ? (ComponentID)compBegin : ((i > 0) ? COMPONENT_Cb : COMPONENT_Y);
       tempCS->prevPLT.curPLTSize[comID] = curLastPLTSize[comID];
       memcpy(tempCS->prevPLT.curPLT[i], curLastPLT[i], curLastPLTSize[comID] * sizeof(Pel));
     }
+    // Obter o modo de teste atual
     EncTestMode currTestMode = m_modeCtrl->currTestMode();
     currTestMode.maxCostAllowed = maxCostAllowed;
-
+    
+    // Ajustar QP cromático para amostras de croma
     if (pps.getUseDQP() && partitioner.isSepTree(*tempCS) && isChroma( partitioner.chType ))
     {
       const Position chromaCentral(tempCS->area.Cb().chromaPos().offset(tempCS->area.Cb().chromaSize().width >> 1, tempCS->area.Cb().chromaSize().height >> 1));
@@ -859,8 +926,9 @@ void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Par
         currTestMode.qp = colLumaCu->qp;
       }
     }
-
+//----------------------------------------------------------------
 #if SHARP_LUMA_DELTA_QP || ENABLE_QPA_SUB_CTU
+    // Verifica se a otimização QG (Quantization Group) está habilitada e se algumas condições específicas são atendidas
     if (partitioner.currQgEnable() && (
         (m_pcEncCfg->getBIM()) ||
 #if SHARP_LUMA_DELTA_QP
@@ -874,8 +942,10 @@ void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Par
 #endif
       ))
     {
+      // Verifica se o QP (Quantization Parameter) atual é válido
       if (currTestMode.qp >= 0)
       {
+        // Atualiza os parâmetros de lambda para a fatia (slice)
         updateLambda (&slice, currTestMode.qp,
  #if WCG_EXT && ER_CHROMA_QP_WCG_PPS
                       m_pcEncCfg->getWCGChromaQPControl().isEnabled(),
@@ -884,7 +954,7 @@ void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Par
       }
     }
 #endif
-
+//----------------------------------------------------------------
     if( currTestMode.type == ETM_INTER_ME )
     {
       if( ( currTestMode.opts & ETO_IMV ) != 0 )
@@ -962,9 +1032,11 @@ void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Par
       splitRdCostBest[CTU_LEVEL] = bestCS->cost;
       tempCS->splitRdCostBest = splitRdCostBest;
     }
+    //----------------------------------------------------------------
 #if REUSE_CU_RESULTS
     else if( currTestMode.type == ETM_RECO_CACHED )
     {
+      // Se o modo de teste atual for de reutilização de resultados de codificação anterior
       xReuseCachedResult( tempCS, bestCS, partitioner );
       splitRdCostBest[CTU_LEVEL] = bestCS->cost;
       tempCS->splitRdCostBest = splitRdCostBest;
@@ -976,7 +1048,7 @@ void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Par
       //Braulio
         clock_t startClock, endClock;
         startClock = clock();
-
+      // Realiza a verificação de custo RD para o modo de fusão skip 2Nx2N
       xCheckRDCostMerge2Nx2N( tempCS, bestCS, partitioner, currTestMode );
       
       //Braulio
@@ -984,11 +1056,13 @@ void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Par
         totalTime_merge += endClock - startClock;
         cast_totalTime_merge = (totalTime_merge)* 1.0 / CLOCKS_PER_SEC;
       
+      // Define a flag mmvdSkip para o bloco de codificação atual
       CodingUnit* cu = bestCS->getCU(partitioner.chType);
       if (cu)
       {
         cu->mmvdSkip = cu->skip == false ? false : cu->mmvdSkip;
       }
+      // Atualiza o custo RD para a divisão do bloco atual
       splitRdCostBest[CTU_LEVEL] = bestCS->cost;
       tempCS->splitRdCostBest = splitRdCostBest;
     }
@@ -998,22 +1072,24 @@ void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Par
       //Braulio
         clock_t startClock, endClock;
         startClock = clock();
-      
+      // Realiza a verificação de custo RD para o modo de fusão geo 2Nx2N
       xCheckRDCostMergeGeo2Nx2N( tempCS, bestCS, partitioner, currTestMode );
       
       //Braulio
         endClock = clock();
         totalTime_mergeGeo += endClock - startClock;
         cast_totalTime_mergeGeo = (totalTime_mergeGeo)* 1.0 / CLOCKS_PER_SEC;
-
+      // Atualiza o custo RD para a divisão do bloco atual
       splitRdCostBest[CTU_LEVEL] = bestCS->cost;
       tempCS->splitRdCostBest = splitRdCostBest;
 
     }
     else if( currTestMode.type == ETM_INTRA )
     {
+      // Verifica se o modo de teste atual é intra-prediction
       if (slice.getSPS()->getUseColorTrans() && !CS::isDualITree(*tempCS))
       {
+        // Verifica se a transformação de cor está habilitada e se não estamos lidando com uma árvore de codificação dupla
         bool skipSecColorSpace = false;
         skipSecColorSpace = xCheckRDCostIntra(tempCS, bestCS, partitioner, currTestMode, (m_pcEncCfg->getRGBFormatFlag() ? true : false));
         if ((m_pcEncCfg->getCostMode() == COST_LOSSLESS_CODING && slice.isLossless()) && !m_pcEncCfg->getRGBFormatFlag())
@@ -1022,6 +1098,7 @@ void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Par
         }
         if (!skipSecColorSpace && !tempCS->firstColorSpaceTestOnly)
         {
+          // Realiza a verificação de custo RD para o modo intra
           xCheckRDCostIntra(tempCS, bestCS, partitioner, currTestMode, (m_pcEncCfg->getRGBFormatFlag() ? false : true));
         }
 
@@ -1043,42 +1120,52 @@ void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Par
       }
       else
       {
+        // Realiza a verificação de custo RD para o modo intra-prediction
         xCheckRDCostIntra(tempCS, bestCS, partitioner, currTestMode, false);
       }
+      // Atualiza o custo RD para a divisão do bloco atual
       splitRdCostBest[CTU_LEVEL] = bestCS->cost;
       tempCS->splitRdCostBest = splitRdCostBest;
     }
     else if (currTestMode.type == ETM_PALETTE)
     {
+      // Realiza a verificação de custo RD para o modo de paleta
       xCheckPLT( tempCS, bestCS, partitioner, currTestMode );
+      // Atualiza o custo RD para a divisão do bloco atual
       splitRdCostBest[CTU_LEVEL] = bestCS->cost;
       tempCS->splitRdCostBest = splitRdCostBest;
     }
     else if (currTestMode.type == ETM_IBC)
     {
+      // Realiza a verificação de custo RD para o modo IBC
       xCheckRDCostIBCMode(tempCS, bestCS, partitioner, currTestMode);
+      // Atualiza o custo RD para a divisão do bloco atual
       splitRdCostBest[CTU_LEVEL] = bestCS->cost;
       tempCS->splitRdCostBest = splitRdCostBest;
     }
     else if (currTestMode.type == ETM_IBC_MERGE)
     {
+      // Realiza a verificação de custo RD para o modo de fusão IBC 2Nx2N
       xCheckRDCostIBCModeMerge2Nx2N(tempCS, bestCS, partitioner, currTestMode);
+      // Atualiza o custo RD para a divisão do bloco atual
       splitRdCostBest[CTU_LEVEL] = bestCS->cost;
       tempCS->splitRdCostBest = splitRdCostBest;
     }
     else if( isModeSplit( currTestMode ) )
     {
+      // Se o modo de teste atual for de modo de divisão (split mode)
       if (bestCS->cus.size() != 0)
       {
         splitmode = bestCS->cus[0]->splitSeries;
       }
+      // Verifica a coerência do modo de sinalização
       assert( partitioner.modeType == tempCS->modeType );
       int signalModeConsVal = tempCS->signalModeCons( getPartSplit( currTestMode ), partitioner, modeTypeParent );
       int numRoundRdo = signalModeConsVal == LDT_MODE_TYPE_SIGNAL ? 2 : 1;
       bool skipInterPass = false;
       for( int i = 0; i < numRoundRdo; i++ )
       {
-        //change cons modes
+        //change cons modes (altera os modos de coerência)
         if( signalModeConsVal == LDT_MODE_TYPE_SIGNAL )
         {
           CHECK( numRoundRdo != 2, "numRoundRdo shall be 2 - [LDT_MODE_TYPE_SIGNAL]" );
@@ -1094,50 +1181,62 @@ void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Par
           CHECK( numRoundRdo != 1, "numRoundRdo shall be 1 - [LDT_MODE_TYPE_INHERIT]" );
           tempCS->modeType = partitioner.modeType = modeTypeParent;
         }
-
+      //----------------------------------------------------------------
+        // Para a codificação intra rápida, define o status para salvar as informações de codificação inter
         //for lite intra encoding fast algorithm, set the status to save inter coding info
         if( modeTypeParent == MODE_TYPE_ALL && tempCS->modeType == MODE_TYPE_INTER )
         {
           m_pcIntraSearch->setSaveCuCostInSCIPU( true );
           m_pcIntraSearch->setNumCuInSCIPU( 0 );
         }
+        // Se o modo de sinalização for MODE_TYPE_ALL e o modo atual não for MODE_TYPE_INTER
         else if( modeTypeParent == MODE_TYPE_ALL && tempCS->modeType != MODE_TYPE_INTER )
         {
           m_pcIntraSearch->setSaveCuCostInSCIPU( false );
+          // Se o modo atual for MODE_TYPE_ALL
           if( tempCS->modeType == MODE_TYPE_ALL )
           {
             m_pcIntraSearch->setNumCuInSCIPU( 0 );
           }
         }
-
+        // Realiza a verificação do modo de divisão e atualiza os custos RD correspondentes
         xCheckModeSplit( tempCS, bestCS, partitioner, currTestMode, modeTypeParent, skipInterPass, splitRdCostBest );
         tempCS->splitRdCostBest = splitRdCostBest;
-        //recover cons modes
+        //recover cons modes (recupera os dados de coerência)
         tempCS->modeType = partitioner.modeType = modeTypeParent;
         tempCS->treeType = partitioner.treeType = treeTypeParent;
         partitioner.chType = chTypeParent;
+        // Se o modo de sinalização for MODE_TYPE_ALL
         if( modeTypeParent == MODE_TYPE_ALL )
         {
           m_pcIntraSearch->setSaveCuCostInSCIPU( false );
+          // Se o número de rondas RD for 2 e o modo atual for MODE_TYPE_INTRA
           if( numRoundRdo == 2 && tempCS->modeType == MODE_TYPE_INTRA )
           {
             m_pcIntraSearch->initCuAreaCostInSCIPU();
           }
         }
+        // Se a passagem de codificação intra deve ser pulada, encerra o loop
         if( skipInterPass )
         {
           break;
         }
       }
 #if GDR_ENABLED
+      // Verifica se a série de divisão mudou na melhor solução
       if (bestCS->cus.size() > 0 && splitmode != bestCS->cus[0]->splitSeries)
 #else
+      // Verifica se a série de divisão mudou na melhor solução
       if (splitmode != bestCS->cus[0]->splitSeries)
 #endif
       {
+        // Atualiza a série de divisão
         splitmode = bestCS->cus[0]->splitSeries;
+        // Obtém a referência para a unidade de codificação
         const CodingUnit&     cu = *bestCS->cus.front();
+        // Copia as informações da paleta de cores anterior
         cu.cs->prevPLT = bestCS->prevPLT;
+        // Atualiza as informações da paleta de cores da melhor solução
         for (int i = compBegin; i < (compBegin + numComp); i++)
         {
           ComponentID comID = jointPLT ? (ComponentID)compBegin : ((i > 0) ? COMPONENT_Cb : COMPONENT_Y);
@@ -1146,7 +1245,7 @@ void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Par
         }
       }
     }
-    else
+    else  // Se o tipo de modo não for reconhecido, lança uma exceção
     {
       THROW( "Don't know how to handle mode: type = " << currTestMode.type << ", options = " << currTestMode.opts );
     }
@@ -1155,19 +1254,20 @@ void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Par
 
   //////////////////////////////////////////////////////////////////////////
   // Finishing CU
+  // Verifica se nenhum modo de codificação foi finalizado devido a uma terminação precoce
   if( tempCS->cost == MAX_DOUBLE && bestCS->cost == MAX_DOUBLE )
   {
-    //although some coding modes were planned to be tried in RDO, no coding mode actually finished encoding due to early termination
-    //thus tempCS->cost and bestCS->cost are both MAX_DOUBLE; in this case, skip the following process for normal case
+    // Embora alguns modos de codificação tenham sido planejados para serem testados em RDO, nenhum modo de codificação realmente finalizou a codificação devido a uma terminação precoce
+    // Assim, tempCS->cost e bestCS->cost são ambos MAX_DOUBLE; nesse caso, pula o seguinte processo para o caso normal
     m_modeCtrl->finishCULevel( partitioner );
     return;
   }
 
-  // set context states
+  // set context states (define estados de contexto)
   m_CABACEstimator->getCtx() = m_CurrCtx->best;
 
-  // QP from last processed CU for further processing
-  //copy the qp of the last non-chroma CU
+  // QP do último CU processado para processamento adicional
+  // copia o QP do último CU não cromático
   int numCUInThisNode = (int)bestCS->cus.size();
   if( numCUInThisNode > 1 && bestCS->cus.back()->chType == CHANNEL_TYPE_CHROMA && !CS::isDualITree( *bestCS ) )
   {
@@ -1226,6 +1326,7 @@ void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Par
       memcpy(bestCS->prevPLT.curPLT[i], bestLastPLT[i], bestCS->prevPLT.curPLTSize[comID] * sizeof(Pel));
     }
   }
+  //----------------------------------------------------------------
   const CodingUnit&     cu = *bestCS->cus.front();
   cu.cs->prevPLT = bestCS->prevPLT;
   // Assert if Best prediction mode is NONE
@@ -1234,7 +1335,7 @@ void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Par
   CHECK( bestCS->cus[0]->predMode == NUMBER_OF_PREDICTION_MODES, "No possible encoding found" );
   CHECK( bestCS->cost             == MAX_DOUBLE                , "No possible encoding found" );
 }
-
+//----------------------------------------------------------------
 #if SHARP_LUMA_DELTA_QP || ENABLE_QPA_SUB_CTU
 void EncCu::updateLambda(Slice *slice, const int dQP,
 #if WCG_EXT && ER_CHROMA_QP_WCG_PPS
@@ -1283,7 +1384,7 @@ void EncCu::updateLambda(Slice *slice, const int dQP,
   }
 }
 #endif // SHARP_LUMA_DELTA_QP || ENABLE_QPA_SUB_CTU
-
+//----------------------------------------------------------------
 void EncCu::xCheckModeSplit(CodingStructure *&tempCS, CodingStructure *&bestCS, Partitioner &partitioner, const EncTestMode& encTestMode, const ModeType modeTypeParent, bool &skipInterPass, double *splitRdCostBest )
 {
   const int qp                = encTestMode.qp;

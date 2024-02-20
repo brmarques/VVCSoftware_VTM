@@ -59,6 +59,7 @@ using namespace std;
 //! \ingroup EncoderLib
 //! \{
 
+/*
 //Braulio
   long int totalTime_mergeAffine, 
            totalTime_merge, 
@@ -72,7 +73,7 @@ using namespace std;
         cast_totalTime_interImv, 
         cast_totalTime_inter;
 //Braulio
-
+*/
 
 // ====================================================================================================================
 /*
@@ -955,55 +956,62 @@ void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Par
     }
 #endif
 //----------------------------------------------------------------
+    // Verifica se o modo de teste atual é de predição inter com estimativa de movimento (ETM_INTER_ME)
     if( currTestMode.type == ETM_INTER_ME )
     {
+      // Verifica se a opção de vetor de movimento (IMV) está ativada para o modo de teste atual
       if( ( currTestMode.opts & ETO_IMV ) != 0 )
       {
+        // Calcula se deve pular o modo de teste alternativo de interpolação de meia-película
         const bool skipAltHpelIF = ( int( ( currTestMode.opts & ETO_IMV ) >> ETO_IMV_SHIFT ) == 4 ) && ( bestIntPelCost > 1.25 * bestCS->cost );
-        if (!skipAltHpelIF)
+        if (!skipAltHpelIF)         // Se não pular o modo de teste de interpolação de meia-película
         {
-          tempCS->bestCS = bestCS;
+          tempCS->bestCS = bestCS;              // Configura a melhor configuração de codificação temporária para ser a mesma da melhor configuração atual
 
-          //Braulio
-          clock_t startClock, endClock;
-          startClock = clock();
+          //Braulio    // Mede o tempo de execução da função de cálculo de custo RDO para predição inter com estimativa de movimento de meia-película
+          //clock_t startClock, endClock;
+          //startClock = clock();
 
           xCheckRDCostInterIMV(tempCS, bestCS, partitioner, currTestMode, bestIntPelCost);
           
           //Braulio
-          endClock = clock();
-          totalTime_interImv += endClock - startClock;
-          cast_totalTime_interImv = (totalTime_interImv)* 1.0 / CLOCKS_PER_SEC;
+          //endClock = clock();
+          //totalTime_interImv += endClock - startClock;
+         // cast_totalTime_interImv = (totalTime_interImv)* 1.0 / CLOCKS_PER_SEC;
           
-          tempCS->bestCS = nullptr;
+          tempCS->bestCS = nullptr;                 // Restaura a melhor configuração temporária para nullptr
+          // Atualiza os custos de codificação para a melhor configuração atual
           splitRdCostBest[CTU_LEVEL] = bestCS->cost;
           tempCS->splitRdCostBest = splitRdCostBest;
         }
       }
       else
       {
+        // Configura a melhor configuração de codificação temporária para ser a mesma da melhor configuração atual
         tempCS->bestCS = bestCS;
 
-        //Braulio
-        clock_t startClock, endClock;
-        startClock = clock();
+        //Braulio         // Mede o tempo de execução da função de cálculo de custo RDO para predição inter sem IMV
+        //clock_t startClock, endClock;
+        //startClock = clock();
 
         xCheckRDCostInter( tempCS, bestCS, partitioner, currTestMode );
         
         //Braulio
-        endClock = clock();
-        totalTime_inter += endClock - startClock;
-        cast_totalTime_inter = (totalTime_inter)* 1.0 / CLOCKS_PER_SEC;
+        //endClock = clock();
+        //totalTime_inter += endClock - startClock;
+        //cast_totalTime_inter = (totalTime_inter)* 1.0 / CLOCKS_PER_SEC;
         
-        tempCS->bestCS = nullptr;
+        tempCS->bestCS = nullptr;           // Restaura a melhor configuração temporária para nullptr
+        // Atualiza os custos de codificação para a melhor configuração atual
         splitRdCostBest[CTU_LEVEL] = bestCS->cost;
         tempCS->splitRdCostBest = splitRdCostBest;
       }
 
     }
+    // Verifica se o modo de teste atual é de predição inter usando hash (ETM_HASH_INTER)
     else if (currTestMode.type == ETM_HASH_INTER)
     {
-      //Braulio
+      //Braulio       // Mede o tempo de execução da função de cálculo de custo RDO para predição inter usando hash
       //clock_t startClock, endClock;
       //startClock = clock();
       
@@ -1012,78 +1020,86 @@ void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Par
       //Braulio
       //endClock = clock();
       //totalTime_hashInter += endClock - startClock;
-
+      
+      // Atualiza os custos de codificação para a melhor configuração atual
       splitRdCostBest[CTU_LEVEL] = bestCS->cost;
       tempCS->splitRdCostBest = splitRdCostBest;
     }
+    // Verifica se o modo de teste atual é de predição inter usando afinamento (ETM_AFFINE)
     else if( currTestMode.type == ETM_AFFINE )
     {
       //Braulio
-        clock_t startClock, endClock;
-        startClock = clock();
+        //clock_t startClock, endClock;
+        //startClock = clock();
       
       xCheckRDCostAffineMerge2Nx2N( tempCS, bestCS, partitioner, currTestMode );
       
       //Braulio
-        endClock = clock();
-        totalTime_mergeAffine += endClock - startClock;
-        cast_totalTime_mergeAffine = (totalTime_mergeAffine* 1.0) / CLOCKS_PER_SEC;
+        //endClock = clock();
+        //totalTime_mergeAffine += endClock - startClock;
+        //cast_totalTime_mergeAffine = (totalTime_mergeAffine* 1.0) / CLOCKS_PER_SEC;
       
+      // Atualiza os custos de codificação para a melhor configuração atual
       splitRdCostBest[CTU_LEVEL] = bestCS->cost;
       tempCS->splitRdCostBest = splitRdCostBest;
     }
     //----------------------------------------------------------------
+// Verifica se o modo de teste atual é de reutilização de resultados de codificação anterior
 #if REUSE_CU_RESULTS
     else if( currTestMode.type == ETM_RECO_CACHED )
     {
       // Se o modo de teste atual for de reutilização de resultados de codificação anterior
       xReuseCachedResult( tempCS, bestCS, partitioner );
+      // Atualiza os custos de codificação para a melhor configuração atual
       splitRdCostBest[CTU_LEVEL] = bestCS->cost;
       tempCS->splitRdCostBest = splitRdCostBest;
     }
 #endif
+    // Verifica se o modo de teste atual é de fusão skip 2Nx2N
     else if( currTestMode.type == ETM_MERGE_SKIP )
     {
       
-      //Braulio
-        clock_t startClock, endClock;
-        startClock = clock();
+      //Braulio       // Mede o tempo de execução da função de cálculo de custo RDO para fusão skip 2Nx2N
+        //clock_t startClock, endClock;
+        //startClock = clock();
       // Realiza a verificação de custo RD para o modo de fusão skip 2Nx2N
       xCheckRDCostMerge2Nx2N( tempCS, bestCS, partitioner, currTestMode );
       
       //Braulio
-        endClock = clock();
-        totalTime_merge += endClock - startClock;
-        cast_totalTime_merge = (totalTime_merge)* 1.0 / CLOCKS_PER_SEC;
+        //endClock = clock();
+        //totalTime_merge += endClock - startClock;
+        //cast_totalTime_merge = (totalTime_merge)* 1.0 / CLOCKS_PER_SEC;
       
-      // Define a flag mmvdSkip para o bloco de codificação atual
+      // Obtém o bloco de codificação atual
       CodingUnit* cu = bestCS->getCU(partitioner.chType);
+      // Define a flag mmvdSkip para o bloco de codificação atual
       if (cu)
       {
         cu->mmvdSkip = cu->skip == false ? false : cu->mmvdSkip;
       }
-      // Atualiza o custo RD para a divisão do bloco atual
+      // Atualiza o custo RD para a divisão do bloco atual // Atualiza os custos de codificação para a melhor configuração atual
       splitRdCostBest[CTU_LEVEL] = bestCS->cost;
       tempCS->splitRdCostBest = splitRdCostBest;
     }
     else if( currTestMode.type == ETM_MERGE_GEO )
     {
       
-      //Braulio
-        clock_t startClock, endClock;
-        startClock = clock();
+      //Braulio     // Mede o tempo de execução da função de cálculo de custo RDO para fusão geo 2Nx2N
+        //clock_t startClock, endClock;
+        //startClock = clock();
       // Realiza a verificação de custo RD para o modo de fusão geo 2Nx2N
       xCheckRDCostMergeGeo2Nx2N( tempCS, bestCS, partitioner, currTestMode );
       
       //Braulio
-        endClock = clock();
-        totalTime_mergeGeo += endClock - startClock;
-        cast_totalTime_mergeGeo = (totalTime_mergeGeo)* 1.0 / CLOCKS_PER_SEC;
+        //endClock = clock();
+        //totalTime_mergeGeo += endClock - startClock;
+        //cast_totalTime_mergeGeo = (totalTime_mergeGeo)* 1.0 / CLOCKS_PER_SEC;
       // Atualiza o custo RD para a divisão do bloco atual
       splitRdCostBest[CTU_LEVEL] = bestCS->cost;
       tempCS->splitRdCostBest = splitRdCostBest;
 
     }
+    // Verifica se o modo de teste atual é de predição intra
     else if( currTestMode.type == ETM_INTRA )
     {
       // Verifica se o modo de teste atual é intra-prediction
@@ -1092,21 +1108,25 @@ void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Par
         // Verifica se a transformação de cor está habilitada e se não estamos lidando com uma árvore de codificação dupla
         bool skipSecColorSpace = false;
         skipSecColorSpace = xCheckRDCostIntra(tempCS, bestCS, partitioner, currTestMode, (m_pcEncCfg->getRGBFormatFlag() ? true : false));
+        // Verifica se a condição para pular o segundo teste de espaço de cor é atendida
         if ((m_pcEncCfg->getCostMode() == COST_LOSSLESS_CODING && slice.isLossless()) && !m_pcEncCfg->getRGBFormatFlag())
         {
           skipSecColorSpace = true;
         }
+        // Verifica se deve pular o segundo teste de espaço de cor
         if (!skipSecColorSpace && !tempCS->firstColorSpaceTestOnly)
         {
           // Realiza a verificação de custo RD para o modo intra
           xCheckRDCostIntra(tempCS, bestCS, partitioner, currTestMode, (m_pcEncCfg->getRGBFormatFlag() ? false : true));
         }
-
+        // Verifica se o primeiro teste de espaço de cor já foi realizado
         if (!tempCS->firstColorSpaceTestOnly)
         {
+          // Verifica se a condição para pular o segundo teste de espaço de cor é atendida
           if (tempCS->tmpColorSpaceIntraCost[0] != MAX_DOUBLE && tempCS->tmpColorSpaceIntraCost[1] != MAX_DOUBLE)
           {
             double skipCostRatio = m_pcEncCfg->getRGBFormatFlag() ? 1.1 : 1.0;
+            // Pula o segundo teste de espaço de cor se a condição for atendida
             if (tempCS->tmpColorSpaceIntraCost[1] > (skipCostRatio*tempCS->tmpColorSpaceIntraCost[0]))
             {
               tempCS->firstColorSpaceTestOnly = bestCS->firstColorSpaceTestOnly = true;
@@ -1115,6 +1135,7 @@ void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Par
         }
         else
         {
+          // Verifica se o segundo teste de espaço de cor foi pulado corretamente
           CHECK(tempCS->tmpColorSpaceIntraCost[1] != MAX_DOUBLE, "the RD test of the second color space should be skipped");
         }
       }
@@ -1127,6 +1148,7 @@ void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Par
       splitRdCostBest[CTU_LEVEL] = bestCS->cost;
       tempCS->splitRdCostBest = splitRdCostBest;
     }
+    // Verifica se o modo de teste atual é de paleta
     else if (currTestMode.type == ETM_PALETTE)
     {
       // Realiza a verificação de custo RD para o modo de paleta
@@ -1135,6 +1157,7 @@ void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Par
       splitRdCostBest[CTU_LEVEL] = bestCS->cost;
       tempCS->splitRdCostBest = splitRdCostBest;
     }
+    // Verifica se o modo de teste atual é de IBC
     else if (currTestMode.type == ETM_IBC)
     {
       // Realiza a verificação de custo RD para o modo IBC
@@ -1143,6 +1166,7 @@ void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Par
       splitRdCostBest[CTU_LEVEL] = bestCS->cost;
       tempCS->splitRdCostBest = splitRdCostBest;
     }
+    // Verifica se o modo de teste atual é de mesclagem IBC 2Nx2N
     else if (currTestMode.type == ETM_IBC_MERGE)
     {
       // Realiza a verificação de custo RD para o modo de fusão IBC 2Nx2N
@@ -1151,9 +1175,10 @@ void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Par
       splitRdCostBest[CTU_LEVEL] = bestCS->cost;
       tempCS->splitRdCostBest = splitRdCostBest;
     }
+    // Verifica se o modo de teste atual é um modo de divisão
     else if( isModeSplit( currTestMode ) )
     {
-      // Se o modo de teste atual for de modo de divisão (split mode)
+      // Obtém a série de divisão do bloco atual
       if (bestCS->cus.size() != 0)
       {
         splitmode = bestCS->cus[0]->splitSeries;
@@ -1163,22 +1188,29 @@ void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Par
       int signalModeConsVal = tempCS->signalModeCons( getPartSplit( currTestMode ), partitioner, modeTypeParent );
       int numRoundRdo = signalModeConsVal == LDT_MODE_TYPE_SIGNAL ? 2 : 1;
       bool skipInterPass = false;
+      // Itera sobre as rodadas de RDO
       for( int i = 0; i < numRoundRdo; i++ )
       {
         //change cons modes (altera os modos de coerência)
         if( signalModeConsVal == LDT_MODE_TYPE_SIGNAL )
         {
+          // Verifica a validade do número de rodadas RDO
           CHECK( numRoundRdo != 2, "numRoundRdo shall be 2 - [LDT_MODE_TYPE_SIGNAL]" );
+          // Define o modo de sinalização com base na iteração
           tempCS->modeType = partitioner.modeType = (i == 0) ? MODE_TYPE_INTER : MODE_TYPE_INTRA;
         }
         else if( signalModeConsVal == LDT_MODE_TYPE_INFER )
         {
+          // Verifica a validade do número de rodadas RDO
           CHECK( numRoundRdo != 1, "numRoundRdo shall be 1 - [LDT_MODE_TYPE_INFER]" );
+          // Define o modo de sinalização como intra
           tempCS->modeType = partitioner.modeType = MODE_TYPE_INTRA;
         }
         else if( signalModeConsVal == LDT_MODE_TYPE_INHERIT )
         {
+          // Verifica a validade do número de rodadas RDO
           CHECK( numRoundRdo != 1, "numRoundRdo shall be 1 - [LDT_MODE_TYPE_INHERIT]" );
+          // Define o modo de sinalização como o modo do bloco pai
           tempCS->modeType = partitioner.modeType = modeTypeParent;
         }
       //----------------------------------------------------------------
@@ -1257,7 +1289,8 @@ void EncCu::xCompressCU( CodingStructure*& tempCS, CodingStructure*& bestCS, Par
   // Verifica se nenhum modo de codificação foi finalizado devido a uma terminação precoce
   if( tempCS->cost == MAX_DOUBLE && bestCS->cost == MAX_DOUBLE )
   {
-    // Embora alguns modos de codificação tenham sido planejados para serem testados em RDO, nenhum modo de codificação realmente finalizou a codificação devido a uma terminação precoce
+    // Embora alguns modos de codificação tenham sido planejados para serem testados em RDO(Rate-Distortion Otimization), 
+    // nenhum modo de codificação realmente finalizou a codificação devido a uma terminação precoce
     // Assim, tempCS->cost e bestCS->cost são ambos MAX_DOUBLE; nesse caso, pula o seguinte processo para o caso normal
     m_modeCtrl->finishCULevel( partitioner );
     return;

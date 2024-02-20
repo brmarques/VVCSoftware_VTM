@@ -1984,10 +1984,13 @@ void InterPrediction::motionCompensateCu(CodingUnit &cu, const RefPicList eRefPi
   }
 }
 
+// Função responsável por realizar a compensação de movimento para uma Prediction Unit específica. Ela é uma interface que simplifica a chamada para a função principal de compensação de movimento.
 void InterPrediction::motionCompensatePu(PredictionUnit &pu, const RefPicList eRefPicList, const bool luma,
                                          const bool chroma)
 {
+  // Obtém o buffer de predição para a Prediction Unit (pu)
   PelUnitBuf predBuf = pu.cs->getPredBuf( pu );
+  // Chama a função de compensação de movimento com os parâmetros apropriados
   motionCompensation(pu, predBuf, eRefPicList, luma, chroma, nullptr);
 }
 

@@ -45,29 +45,30 @@
 #include "Slice.h"
 #include <vector>
 
-
+// Estrutura que representa uma imagem
 struct Picture;
 
-
+// Enumeração para os tipos de imagens utilizadas no processo de codificação de vídeo
 enum PictureType
 {
-  PIC_RECONSTRUCTION = 0,
-  PIC_ORIGINAL,
-  PIC_TRUE_ORIGINAL,
-  PIC_FILTERED_ORIGINAL,
-  PIC_FILTERED_ORIGINAL_FG,
-  PIC_PREDICTION,
-  PIC_RESIDUAL,
-  PIC_ORG_RESI,
-  PIC_RECON_WRAP,
-  PIC_ORIGINAL_INPUT,
-  PIC_TRUE_ORIGINAL_INPUT,
-  PIC_FILTERED_ORIGINAL_INPUT,
+  PIC_RECONSTRUCTION = 0,           // Imagem de reconstrução
+  PIC_ORIGINAL,                     // Imagem original
+  PIC_TRUE_ORIGINAL,                // Imagem verdadeira original
+  PIC_FILTERED_ORIGINAL,            // Imagem original filtrada
+  PIC_FILTERED_ORIGINAL_FG,         // Imagem original filtrada (foreground)
+  PIC_PREDICTION,                   // Imagem de predição
+  PIC_RESIDUAL,                     // Imagem residual
+  PIC_ORG_RESI,                     // Imagem original + residual
+  PIC_RECON_WRAP,                   // Imagem de reconstrução "embrulhada" (usada em algum processo específico)
+  PIC_ORIGINAL_INPUT,               // Imagem original de entrada
+  PIC_TRUE_ORIGINAL_INPUT,          // Imagem verdadeira original de entrada
+  PIC_FILTERED_ORIGINAL_INPUT,      // Imagem original filtrada de entrada
 #if JVET_Z0120_SII_SEI_PROCESSING
-  PIC_YUV_POST_REC,
+  PIC_YUV_POST_REC,                 // Imagem YUV pós-reconstrução (específica para algum processamento)
 #endif
-  NUM_PIC_TYPES
+  NUM_PIC_TYPES                      // Número total de tipos de imagens
 };
+// Declaração externa de uma estrutura de cache global de unidades (XUCache)
 extern XUCache g_globalUnitCache;
 
 // ---------------------------------------------------------------------------
@@ -80,17 +81,20 @@ public:
 
   UnitArea         area;
 
-  Picture         *picture;
-  CodingStructure *parent;
-  CodingStructure *bestCS;
-  Slice           *slice;
+  Picture         *picture; // ponteiro para a estrutura de imagem associada
+  CodingStructure *parent;  // ponteiro para a estrutura de codificacao pai
+  CodingStructure *bestCS;  // ponteiro para a melhor estrutura de codificacao
+  Slice           *slice;   // ponteiro para a fatia (estrutura de codificacao)
 
+  // escala de unidade para cada componente
   UnitScale        unitScale[MAX_NUM_COMPONENT];
-
+  // QP base e QPs anteriores e atuais para cada tipo de canal
   int         baseQP;
   int         prevQP[MAX_NUM_CHANNEL_TYPE];
   int         currQP[MAX_NUM_CHANNEL_TYPE];
+  // ajuste de QP para chroma
   int         chromaQpAdj;
+  // Ponteiros constantes para SPS, PPS, cabecalho de imagem e VPS
   const SPS *sps;
   const PPS *pps;
   PicHeader *picHeader;
@@ -98,23 +102,25 @@ public:
   APS *      lmcsAps;
   APS *      scalinglistAps;
   const VPS *vps;
+  // ponteiro para valores pre-calculados
   const PreCalcValues* pcv;
 
+  // Construtor que recebe caches para unidades de codificacao
   CodingStructure(CUCache&, PUCache&, TUCache&);
 
-#if GDR_ENABLED
+#if GDR_ENABLED      // funcoes relacionadas ao GDR
   bool isGdrEnabled() { return m_gdrEnabled; }
   void create(const UnitArea &_unit, const bool isTopLayer, const bool isPLTused, const bool isGdrEnabled = false);
   void create(const ChromaFormat &_chromaFormat, const Area& _area, const bool isTopLayer, const bool isPLTused, const bool isGdrEnabeld = false);
-#else
+#else                // funcoes de criacao para quando o GDR nao esta habilidado
   void create(const UnitArea &_unit, const bool isTopLayer, const bool isPLTused);
   void create(const ChromaFormat &_chromaFormat, const Area& _area, const bool isTopLayer, const bool isPLTused);
 #endif
 
-  void destroy();
-  void releaseIntermediateData();
+  void destroy();                         // destrutor
+  void releaseIntermediateData();         // funcao para liberar dados intermediarios
 
-#if GDR_ENABLED
+#if GDR_ENABLED      // funcoes relacionadas ao GDR
   bool containRefresh(int begX, int endX) const;
   bool overlapRefresh() const;
   bool overlapRefresh(int begX, int endX) const;
@@ -128,7 +134,7 @@ public:
   bool dirtyCrossBTV() const;
 #endif
 
-#if GDR_ENABLED
+#if GDR_ENABLED      // funcoes relacionadas ao GDR para verificar se uma posicao ou regiao esta limpa
   bool isClean(const ChannelType effChType) const;
   bool isClean(const Position &IntPos, RefPicList e, int refIdx) const;
   bool isClean(const Position &IntPos, const Picture* const ref_pic) const;
@@ -140,24 +146,28 @@ public:
   bool isClean(const int x, const int y, const ChannelType effChType) const;
   bool isClean(const Area &area, const ChannelType effChType) const;
 
+  // funcao para verificar se uma subPU esta limpa
   bool isSubPuClean(PredictionUnit &pu, const Mv *mv) const;
 #endif
-  void rebindPicBufs();
+  void rebindPicBufs(); // funcao para vinculuar novamente buffers de imagem
 
+  // funcoes para criar e destruir coeficientes
   void createCoeffs(const bool isPLTused);
   void destroyCoeffs();
 
+  // funcao para alocar vetores no nivel de imagem
   void allocateVectorsAtPicLevel();
 
   // ---------------------------------------------------------------------------
   // global accessors
   // ---------------------------------------------------------------------------
-
+  // Funções para verificar se uma posição ou área está descomprimida para um determinado tipo de canal
   bool isDecomp (const Position &pos, const ChannelType _chType) const;
   bool isDecomp (const Position &pos, const ChannelType _chType);
+  // Funções para marcar uma área como descomprimida, opcionalmente indicando se está codificada
   void setDecomp(const CompArea &area, const bool _isCoded = true);
   void setDecomp(const UnitArea &area, const bool _isCoded = true);
-
+  // Funções para obter ponteiros para CodingUnit, PredictionUnit e TransformUnit em uma determinada posição e tipo de canal
   const CodingUnit     *getCU(const Position &pos, const ChannelType _chType) const;
   const PredictionUnit *getPU(const Position &pos, const ChannelType _chType) const;
   const TransformUnit  *getTU(const Position &pos, const ChannelType _chType, const int subTuIdx = -1) const;
@@ -167,6 +177,7 @@ public:
   PredictionUnit *getPU(const Position &pos, const ChannelType _chType);
   TransformUnit  *getTU(const Position &pos, const ChannelType _chType, const int subTuIdx = -1);
 
+  // Funções para obter ponteiros para CodingUnit, PredictionUnit e TransformUnit através do tipo de canal
   const CodingUnit     *getCU(const ChannelType &_chType) const { return getCU(area.blocks[_chType].pos(), _chType); }
   const PredictionUnit *getPU(const ChannelType &_chType) const { return getPU(area.blocks[_chType].pos(), _chType); }
   const TransformUnit  *getTU(const ChannelType &_chType) const { return getTU(area.blocks[_chType].pos(), _chType); }
@@ -175,20 +186,25 @@ public:
   PredictionUnit *getPU(const ChannelType &_chType ) { return getPU(area.blocks[_chType].pos(), _chType); }
   TransformUnit  *getTU(const ChannelType &_chType ) { return getTU(area.blocks[_chType].pos(), _chType); }
 
+  // Funções para obter ponteiros para CodingUnit, PredictionUnit e TransformUnit em uma posição restrita
   const CodingUnit     *getCURestricted(const Position &pos, const Position curPos, const unsigned curSliceIdx, const unsigned curTileIdx, const ChannelType _chType) const;
   const CodingUnit     *getCURestricted(const Position &pos, const CodingUnit& curCu,                               const ChannelType _chType) const;
   const PredictionUnit *getPURestricted(const Position &pos, const PredictionUnit& curPu,                           const ChannelType _chType) const;
   const TransformUnit  *getTURestricted(const Position &pos, const TransformUnit& curTu,                            const ChannelType _chType) const;
 
+  // Funções para adicionar CodingUnit, PredictionUnit e TransformUnit em uma determinada área
   CodingUnit&     addCU(const UnitArea &unit, const ChannelType _chType);
   PredictionUnit& addPU(const UnitArea &unit, const ChannelType _chType);
   TransformUnit&  addTU(const UnitArea &unit, const ChannelType _chType);
+  // Função para adicionar TransformUnits vazios usando um particionador
   void            addEmptyTUs(Partitioner &partitioner);
-
+  
+  // Funções para criar traversers para percorrer CodingUnits, PredictionUnits e TransformUnits
   CUTraverser     traverseCUs(const UnitArea& _unit, const ChannelType _chType);
   PUTraverser     traversePUs(const UnitArea& _unit, const ChannelType _chType);
   TUTraverser     traverseTUs(const UnitArea& _unit, const ChannelType _chType);
 
+  // Versões constantes das funções de traversing
   cCUTraverser    traverseCUs(const UnitArea& _unit, const ChannelType _chType) const;
   cPUTraverser    traversePUs(const UnitArea& _unit, const ChannelType _chType) const;
   cTUTraverser    traverseTUs(const UnitArea& _unit, const ChannelType _chType) const;

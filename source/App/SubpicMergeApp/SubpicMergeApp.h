@@ -43,16 +43,16 @@
  //! \{
 
 
-
+// Estrutura para armazenar parâmetros de uma subimagem
 struct SubpicParams {
-  int                                  width;
-  int                                  height;
-  int                                  topLeftCornerX;
-  int                                  topLeftCornerY;
-  std::ifstream                        fp;
+  int                                  width;           // Largura da subimagem
+  int                                  height;          // Altura da subimagem
+  int                                  topLeftCornerX;  // Coordenada X do canto superior esquerdo
+  int                                  topLeftCornerY;  // Coordenada Y do canto superior esquerdo
+  std::ifstream                        fp;              // Fluxo de arquivo de entrada para a subimagem
 };
 
-
+// Declaração antecipada de classes e estruturas usadas no SubpicMergeApp
 struct Subpicture;
 class InputByteStream;
 class HLSyntaxReader;
@@ -70,23 +70,25 @@ class PPS;
 struct OutputNALUnit;
 class AccessUnit;
 
-
+// Declaração da classe SubpicMergeApp
 class SubpicMergeApp
 {
 public:
+  // Construtor que aceita parâmetros de subimagens e um fluxo de saída
   SubpicMergeApp(std::vector<SubpicParams> &subpicParams, std::ofstream &outputStream);
-  ~SubpicMergeApp();
+  ~SubpicMergeApp();                                    // Destrutor
 
-  void mergeStreams(bool mixedNaluFlag);
-  void mergeYuvFiles(int bitdepth, int chromaFormat);
+  void mergeStreams(bool mixedNaluFlag);                // Método para mesclar subimagens em um único fluxo
+  void mergeYuvFiles(int bitdepth, int chromaFormat);   // Método para mesclar arquivos YUV
 
 private:
-  std::vector<Subpicture> *m_subpics;
-  std::ofstream &m_outputStream;
-  int m_prevPicPOC;
-  int m_picWidth;
-  int m_picHeight;
+  std::vector<Subpicture> *m_subpics;  // Vetor para armazenar subimagens
+  std::ofstream &m_outputStream;       // Fluxo de saída para o conteúdo mesclado
+  int m_prevPicPOC;                    // POC da imagem anterior
+  int m_picWidth;                      // Largura da imagem
+  int m_picHeight;                     // Altura da imagem
 
+  // Métodos privados para funcionalidade interna
   void getOutputPicSize();
   bool isNewPicture(std::ifstream *bitstreamFile, InputByteStream *bytestream, bool firstSliceInPicture);
   bool parseDCI(HLSyntaxReader &hlsReader, DCI &dci);

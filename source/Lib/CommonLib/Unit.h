@@ -32,7 +32,7 @@
 */
 
 /** \file     Unit.h
- *  \brief    defines unit as a set of blocks and basic unit types (coding, prediction, transform)
+ *  \brief    define unidade como um conjunto de blocos e tipos de unidades básicas (codificação, previsão, transformação)
  */
 
 #ifndef __UNIT__
@@ -439,7 +439,7 @@ struct PredictionUnit : public UnitArea, public IntraPredictionData, public Inte
 
   PredictionUnit *next;
 
-  // for accessing motion information, which can have higher resolution than PUs (should always be used, when accessing neighboring motion information)
+  // para acessar informações de movimento, que podem ter resolução maior que PUs (devem sempre ser usadas, ao acessar informações de movimento vizinhas)
   const MotionInfo& getMotionInfo() const;
   const MotionInfo& getMotionInfo( const Position& pos ) const;
   MotionBuf         getMotionBuf();

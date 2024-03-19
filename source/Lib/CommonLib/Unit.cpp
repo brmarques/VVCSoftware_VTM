@@ -326,10 +326,10 @@ void CodingUnit::initData()
   mtDepth           = 0;
   splitSeries       = 0;
   skip              = false;
-  mmvdSkip = false;
+  mmvdSkip          = false;
   affine            = false;
   affineType        = 0;
-  colorTransform = false;
+  colorTransform    = false;
   geoFlag           = false;
   bdpcmMode         = 0;
   bdpcmModeChroma   = 0;
@@ -528,22 +528,22 @@ PredictionUnit::PredictionUnit(const ChromaFormat _chromaFormat, const Area &_ar
 void PredictionUnit::initData()
 {
   // intra data - need this default initialization for PCM
-  intraDir[0] = DC_IDX;
-  intraDir[1] = PLANAR_IDX;
+  intraDir[0]       = DC_IDX;
+  intraDir[1]       = PLANAR_IDX;
   mipTransposedFlag = false;
-  multiRefIdx = 0;
+  multiRefIdx       = 0;
 
   // inter data
-  mergeFlag   = false;
-  regularMergeFlag = false;
-  mergeIdx    = MAX_UCHAR;
-  geoSplitDir  = MAX_UCHAR;
-  geoMergeIdx0 = MAX_UCHAR;
-  geoMergeIdx1 = MAX_UCHAR;
-  mmvdMergeFlag = false;
-  mmvdMergeIdx = MAX_UINT;
-  interDir    = MAX_UCHAR;
-  mergeType   = MRG_TYPE_DEFAULT_N;
+  mergeFlag         = false;
+  regularMergeFlag  = false;
+  mergeIdx          = MAX_UCHAR;
+  geoSplitDir       = MAX_UCHAR;
+  geoMergeIdx0      = MAX_UCHAR;
+  geoMergeIdx1      = MAX_UCHAR;
+  mmvdMergeFlag     = false;
+  mmvdMergeIdx      = MAX_UINT;
+  interDir          = MAX_UCHAR;
+  mergeType         = MRG_TYPE_DEFAULT_N;
   bv.setZero();
   bvd.setZero();
   mvRefine = false;
@@ -589,18 +589,18 @@ PredictionUnit& PredictionUnit::operator=(const IntraPredictionData& predData)
 
 PredictionUnit& PredictionUnit::operator=(const InterPredictionData& predData)
 {
-  mergeFlag   = predData.mergeFlag;
-  regularMergeFlag = predData.regularMergeFlag;
-  mergeIdx    = predData.mergeIdx;
-  geoSplitDir  = predData.geoSplitDir;
-  geoMergeIdx0 = predData.geoMergeIdx0;
-  geoMergeIdx1 = predData.geoMergeIdx1;
-  mmvdMergeFlag = predData.mmvdMergeFlag;
-  mmvdMergeIdx = predData.mmvdMergeIdx;
-  interDir    = predData.interDir;
-  mergeType   = predData.mergeType;
-  bv          = predData.bv;
-  bvd         = predData.bvd;
+  mergeFlag         = predData.mergeFlag;
+  regularMergeFlag  = predData.regularMergeFlag;
+  mergeIdx          = predData.mergeIdx;
+  geoSplitDir       = predData.geoSplitDir;
+  geoMergeIdx0      = predData.geoMergeIdx0;
+  geoMergeIdx1      = predData.geoMergeIdx1;
+  mmvdMergeFlag     = predData.mmvdMergeFlag;
+  mmvdMergeIdx      = predData.mmvdMergeIdx;
+  interDir          = predData.interDir;
+  mergeType         = predData.mergeType;
+  bv                = predData.bv;
+  bvd               = predData.bvd;
   mvRefine = predData.mvRefine;
   for (uint32_t i = 0; i < MAX_NUM_SUBCU_DMVR; i++)
   {
@@ -635,19 +635,19 @@ PredictionUnit& PredictionUnit::operator=( const PredictionUnit& other )
   mipTransposedFlag = other.mipTransposedFlag;
   multiRefIdx = other.multiRefIdx;
 
-  mergeFlag   = other.mergeFlag;
-  regularMergeFlag = other.regularMergeFlag;
-  mergeIdx    = other.mergeIdx;
-  geoSplitDir  = other.geoSplitDir;
-  geoMergeIdx0 = other.geoMergeIdx0;
-  geoMergeIdx1 = other.geoMergeIdx1;
-  mmvdMergeFlag = other.mmvdMergeFlag;
-  mmvdMergeIdx = other.mmvdMergeIdx;
-  interDir    = other.interDir;
-  mergeType   = other.mergeType;
-  bv          = other.bv;
-  bvd         = other.bvd;
-  mvRefine = other.mvRefine;
+  mergeFlag         = other.mergeFlag;
+  regularMergeFlag  = other.regularMergeFlag;
+  mergeIdx          = other.mergeIdx;
+  geoSplitDir       = other.geoSplitDir;
+  geoMergeIdx0      = other.geoMergeIdx0;
+  geoMergeIdx1      = other.geoMergeIdx1;
+  mmvdMergeFlag     = other.mmvdMergeFlag;
+  mmvdMergeIdx      = other.mmvdMergeIdx;
+  interDir          = other.interDir;
+  mergeType         = other.mergeType;
+  bv                = other.bv;
+  bvd               = other.bvd;
+  mvRefine          = other.mvRefine;
   for (uint32_t i = 0; i < MAX_NUM_SUBCU_DMVR; i++)
   {
     mvdL0SubPu[i] = other.mvdL0SubPu[i];

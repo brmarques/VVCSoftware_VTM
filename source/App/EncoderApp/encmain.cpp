@@ -56,6 +56,7 @@ static constexpr uint32_t settingValueWidth = 3;
 
 #define PRINT_CONSTANT(NAME, NAME_WIDTH, VALUE_WIDTH) std::cout << std::setw(NAME_WIDTH) << #NAME << " = " << std::setw(VALUE_WIDTH) << NAME << std::endl;
 
+// Function to print non-environment-variable-controlled macros
 static void printMacroSettings()
 {
   if( g_verbosity >= DETAILS )
@@ -101,6 +102,7 @@ int main(int argc, char* argv[])
 #endif
   fprintf( stdout, "\n" );
 
+  // Initialize variables and objects
   std::fstream bitstream;
   EncLibCommon encLibCommon;
 
@@ -108,13 +110,16 @@ int main(int argc, char* argv[])
   bool resized = false;
   int layerIdx = 0;
 
+  // Initialize ROM and hash block size
   initROM();
   TComHash::initBlockSizeToIndex();
 
+  // Process command line arguments for each layer
   char** layerArgv = new char*[argc];
 
   do
   {
+    // Create an instance of the EncApp class for each layer
     pcEncApp[layerIdx] = new EncApp( bitstream, &encLibCommon );
     // create application encoder class per layer
     pcEncApp[layerIdx]->create();
@@ -176,6 +181,7 @@ int main(int argc, char* argv[])
 
     pcEncApp[layerIdx]->createLib( layerIdx );
 
+    // Resize vector if necessary
     if( !resized )
     {
       pcEncApp.resize( pcEncApp[layerIdx]->getMaxLayers() );
@@ -187,6 +193,7 @@ int main(int argc, char* argv[])
 
   delete[] layerArgv;
 
+  // Handle ALF configurations for multiple layers
   if (layerIdx > 1)
   {
     int nbLayersUsingAlf = 0;
@@ -250,28 +257,30 @@ int main(int argc, char* argv[])
     }
   }
 
+// Print non-environment-variable-controlled macros if verbosity is high
 #if PRINT_MACRO_VALUES
   printMacroSettings();
 #endif
 
-  // starting time
+  // Start encoding time measurement
   auto startTime  = std::chrono::steady_clock::now();
   std::time_t startTime2 = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
   fprintf(stdout, " started @ %s", std::ctime(&startTime2) );
   clock_t startClock = clock();
 
-  // call encoding function per layer
+  // call encoding function per layer - Loop through encoding process for each layer
   bool eos = false;
 
   while( !eos )
   {
-    // read GOP
+    // read GOP - Prepare encoding for each layer
     bool keepLoop = true;
     while( keepLoop )
     {
       for( auto & encApp : pcEncApp )
       {
 #ifndef _DEBUG
+        // Exception handling for encoding preparation
         try
         {
 #endif
@@ -292,14 +301,14 @@ int main(int argc, char* argv[])
       }
     }
 
-    // encode GOP
+    // encode GOP for each layer
     keepLoop = true;
     while( keepLoop )
     {
       for( auto & encApp : pcEncApp )
       {
 #ifndef _DEBUG
-        try
+        try         // Exception handling for encoding
         {
 #endif
           keepLoop = encApp->encode();
@@ -319,7 +328,7 @@ int main(int argc, char* argv[])
       }
     }
   }
-  // ending time
+  // ending enconding time measurement
   clock_t endClock = clock();
   auto endTime = std::chrono::steady_clock::now();
   std::time_t endTime2 = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
@@ -337,6 +346,7 @@ int main(int argc, char* argv[])
   auto encTime = std::chrono::duration_cast<std::chrono::milliseconds>( endTime - startTime).count();
 #endif
 
+  // Destroy objects and free memory
   for( auto & encApp : pcEncApp )
   {
     encApp->destroyLib();
@@ -351,7 +361,7 @@ int main(int argc, char* argv[])
   destroyROM();
 
   pcEncApp.clear();
-
+  // Print total time taken for encoding
   printf( "\n finished @ %s", std::ctime(&endTime2) );
 
 #if JVET_O0756_CALCULATE_HDRMETRICS
